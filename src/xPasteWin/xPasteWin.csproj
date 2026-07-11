@@ -1,0 +1,44 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
+    <RootNamespace>xPasteWin</RootNamespace>
+    <UseWinUI>true</UseWinUI>
+    <WindowsPackageType>None</WindowsPackageType>
+    <EnableMsixTooling>true</EnableMsixTooling>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\tray.ico</ApplicationIcon>
+    <Platforms>x86;x64;ARM64</Platforms>
+    <RuntimeIdentifiers>win-x64;win-x86;win-arm64</RuntimeIdentifiers>
+
+    <!-- Nhúng runtime Windows App SDK vào app (unpackaged self-contained): app không còn phụ
+         thuộc gói framework/DDLM cài sẵn trong hệ thống -> KHÔNG bao giờ hiện hộp thoại
+         "This application requires the Windows App Runtime 1.6". Bật cho mọi build/run. -->
+    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+    <!-- .NET runtime: mặc định framework-dependent (dev nhanh, nhẹ). Khi publish bản mang đi
+         máy khác, truyền -p:SelfContained=true để nhúng luôn .NET (xem README). -->
+    <SelfContained Condition="'$(SelfContained)' == ''">false</SelfContained>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.6.*" />
+    <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.*" />
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.*" />
+    <PackageReference Include="H.NotifyIcon.WinUI" Version="2.3.2" />
+    <PackageReference Include="System.Drawing.Common" Version="9.0.*" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Icon khay: thêm file Assets\tray.ico của bạn. Nếu chưa có, TrayService dùng
+         SystemIcons.Application tạm; Condition tránh fail build khi file vắng mặt. -->
+    <Content Include="Assets\tray.ico" Condition="Exists('Assets\tray.ico')">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Assets\appicon.png" Condition="Exists('Assets\appicon.png')">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+</Project>

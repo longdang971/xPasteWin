@@ -1,0 +1,135 @@
+<Window
+    x:Class="xPasteWin.Views.PanelWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:views="using:xPasteWin.Views">
+    <Grid x:Name="RootGrid" Background="Transparent">
+        <Border x:Name="PanelBorder" CornerRadius="0" BorderThickness="0" Background="Transparent">
+
+            <Grid x:Name="ContentHost" HorizontalAlignment="Left" VerticalAlignment="Top">
+                <Grid.RenderTransform>
+                    <ScaleTransform x:Name="PanelScale" ScaleX="1" ScaleY="1" />
+                </Grid.RenderTransform>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="44" />
+                    <RowDefinition Height="1" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+
+                <!-- Toolbar: trạng thái thường + trạng thái search xếp chồng -->
+                <Grid Grid.Row="0" Padding="14,0">
+                    <!-- Thường: search icon + 2 tab -->
+                    <StackPanel x:Name="NormalBar" Orientation="Horizontal" Spacing="6"
+                                HorizontalAlignment="Center" VerticalAlignment="Center">
+                        <Button x:Name="SearchToggleButton" Width="34" Height="30"
+                                Background="Transparent" BorderThickness="0" Padding="0"
+                                ToolTipService.ToolTip="Search">
+                            <FontIcon Glyph="&#xE721;" FontSize="15" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        </Button>
+                        <Button x:Name="TabAllButton" Height="30" Padding="12,0" BorderThickness="0"
+                                Background="Transparent">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <FontIcon Glyph="&#xE81C;" FontSize="13" />
+                                <TextBlock Text="Clipboard" FontSize="13" />
+                            </StackPanel>
+                        </Button>
+                        <Button x:Name="TabPinButton" Height="30" Padding="12,0" BorderThickness="0"
+                                Background="Transparent">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <FontIcon Glyph="&#xE840;" FontSize="13" Foreground="#FFFF453A" />
+                                <TextBlock Text="Pin" FontSize="13" />
+                            </StackPanel>
+                        </Button>
+                    </StackPanel>
+
+                    <!-- Search: ô nhập bo tròn + 2 tab compact -->
+                    <Grid x:Name="SearchBar" Width="460" HorizontalAlignment="Center"
+                          VerticalAlignment="Center" Opacity="0" Visibility="Collapsed">
+                        <Grid.RenderTransform>
+                            <ScaleTransform x:Name="SearchScale" ScaleX="0.5" CenterX="230" />
+                        </Grid.RenderTransform>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <Border Grid.Column="1" CornerRadius="15" Background="{ThemeResource ControlFillColorDefaultBrush}"
+                                BorderThickness="2" BorderBrush="#FF3B82F6" Padding="10,0" Height="30">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <FontIcon Grid.Column="0" Glyph="&#xE721;" FontSize="13"
+                                          Foreground="{ThemeResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" />
+                                <TextBox x:Name="SearchBox" Grid.Column="1" Margin="8,0,0,0"
+                                         BorderThickness="0" Background="Transparent"
+                                         PlaceholderText="Search" FontSize="15"
+                                         IsSpellCheckEnabled="False"
+                                         VerticalAlignment="Center" />
+                            </Grid>
+                        </Border>
+                        <Button x:Name="TabAllCompact" Grid.Column="2" Width="34" Height="30"
+                                Margin="6,0,0,0" Background="Transparent" BorderThickness="0" Padding="0">
+                            <FontIcon Glyph="&#xE81C;" FontSize="15" />
+                        </Button>
+                        <Button x:Name="TabPinCompact" Grid.Column="3" Width="34" Height="30"
+                                Background="Transparent" BorderThickness="0" Padding="0">
+                            <FontIcon Glyph="&#xE840;" FontSize="15" Foreground="#FFFF453A" />
+                        </Button>
+                    </Grid>
+
+                    <!-- Nút "…" (More) ở góc phải toolbar -->
+                    <Button x:Name="MoreButton" HorizontalAlignment="Right" VerticalAlignment="Center"
+                            Width="34" Height="30" Background="Transparent" BorderThickness="0" Padding="0"
+                            ToolTipService.ToolTip="More">
+                        <FontIcon Glyph="&#xE712;" FontSize="15" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    </Button>
+                </Grid>
+
+                <Border Grid.Row="1" Background="{ThemeResource DividerStrokeColorDefaultBrush}" />
+
+                <!-- Danh sách card -->
+                <Grid Grid.Row="2">
+                    <ListView x:Name="CardList"
+                              IsItemClickEnabled="False"
+                              SelectionMode="None"
+                              IsTabStop="True"
+                              UseSystemFocusVisuals="False"
+                              Background="Transparent"
+                              Padding="16,10"
+                              ScrollViewer.HorizontalScrollMode="Enabled"
+                              ScrollViewer.HorizontalScrollBarVisibility="Hidden"
+                              ScrollViewer.VerticalScrollMode="Disabled"
+                              ScrollViewer.VerticalScrollBarVisibility="Disabled">
+                        <ListView.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <ItemsStackPanel Orientation="Horizontal"/>
+                            </ItemsPanelTemplate>
+                        </ListView.ItemsPanel>
+                        <ListView.ItemContainerStyle>
+                            <Style TargetType="ListViewItem">
+                                <Setter Property="Margin" Value="5"/>
+                                <Setter Property="Padding" Value="0"/>
+                                <Setter Property="IsTabStop" Value="False"/>
+                                <Setter Property="UseSystemFocusVisuals" Value="False"/>
+                                <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                            </Style>
+                        </ListView.ItemContainerStyle>
+                        <ListView.ItemTemplate>
+                            <DataTemplate>
+                                <views:ClipboardItemCard/>
+                            </DataTemplate>
+                        </ListView.ItemTemplate>
+                    </ListView>
+
+                    <TextBlock x:Name="EmptyState" Text="Nothing copied yet"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" FontSize="14"
+                               HorizontalAlignment="Center" VerticalAlignment="Center"
+                               Visibility="Collapsed" />
+                </Grid>
+            </Grid>
+        </Border>
+    </Grid>
+</Window>

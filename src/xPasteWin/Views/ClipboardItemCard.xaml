@@ -1,0 +1,78 @@
+<UserControl
+    x:Class="xPasteWin.Views.ClipboardItemCard"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <!-- DataContext mỗi card là CardViewModel (do DataTemplate cấp). Thiết kế 250×240 giống macOS:
+         header màu accent + vùng preview + footer, viền accent khi chọn, chỉ báo pin góc trên phải. -->
+    <Border Width="250" Height="240" CornerRadius="14"
+            BorderThickness="2"
+            BorderBrush="{Binding SelectionBrush}">
+        <!-- CornerRadius của Border tự cắt nội dung theo góc bo (WinUI) → KHÔNG dùng RectangleGeometry
+             (góc nhọn) nữa vì nó ghi đè bo góc, làm mất border-radius khi ảnh/footer chạm mép. -->
+        <Border CornerRadius="12" Background="{Binding CardContentBrush}">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="58" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="30" />
+                </Grid.RowDefinitions>
+
+                <!-- Header: nền accent (màu trích từ icon app nguồn), tiêu đề + thời gian + icon app -->
+                <Grid Grid.Row="0" Background="{Binding AccentBrush}" Padding="12,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="2">
+                        <TextBlock Text="{Binding Title}" FontSize="15" FontWeight="Bold"
+                                   Foreground="White" TextTrimming="CharacterEllipsis" />
+                        <TextBlock Text="{Binding RelativeTime}" FontSize="10"
+                                   Foreground="#BFFFFFFF" />
+                    </StackPanel>
+                    <Grid Grid.Column="1" Width="36" Height="36" Margin="8,0,2,0"
+                          VerticalAlignment="Center"
+                          ToolTipService.ToolTip="{Binding SourceAppName}">
+                        <!-- Bóng đổ bám theo hình icon (Composition DropShadow, dựng ở code-behind) -->
+                        <Border x:Name="IconShadowHost" />
+                        <Image x:Name="AppIcon" Source="{Binding SourceAppIcon}"
+                               Visibility="{Binding SourceIconVisibility}" Stretch="Uniform" />
+                    </Grid>
+                </Grid>
+
+                <!-- Content: text (tối đa ~7 dòng) hoặc thumbnail ảnh; pin overlay.
+                     Ảnh fill bị chặn bởi MaxWidth/Height = ActualWidth/Height THỰC của vùng này nên
+                     không tràn ra header/footer (không cần magic-number clip). -->
+                <Grid x:Name="ContentArea" Grid.Row="1" Background="{Binding CardContentBrush}">
+                    <TextBlock Text="{Binding PreviewText}" Visibility="{Binding TextVisibility}"
+                               Margin="12" FontSize="13" Foreground="{Binding PrimaryTextBrush}"
+                               TextWrapping="Wrap" MaxLines="7" TextTrimming="CharacterEllipsis"
+                               VerticalAlignment="Top" />
+                    <Image Source="{Binding Thumbnail}" Visibility="{Binding ThumbVisibility}"
+                           Stretch="{Binding ThumbStretch}"
+                           Width="{Binding ThumbFixedSize}" Height="{Binding ThumbFixedSize}"
+                           MaxWidth="{Binding ActualWidth, ElementName=ContentArea}"
+                           MaxHeight="{Binding ActualHeight, ElementName=ContentArea}"
+                           HorizontalAlignment="{Binding ThumbAlign}"
+                           VerticalAlignment="{Binding ThumbVAlign}" />
+                    <!-- Ô màu: nền là màu phát hiện, chữ mono ở giữa, màu chữ theo độ sáng -->
+                    <Border Background="{Binding ColorSwatchBrush}" Visibility="{Binding ColorVisibility}">
+                        <TextBlock Text="{Binding PreviewText}" Foreground="{Binding ColorTextBrush}"
+                                   FontFamily="Consolas" FontSize="14" FontWeight="Medium"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center"
+                                   TextAlignment="Center" TextWrapping="Wrap" Margin="8" />
+                    </Border>
+                    <FontIcon Glyph="&#xE840;" FontSize="10" Foreground="#FFFF453A"
+                              HorizontalAlignment="Right" VerticalAlignment="Top" Margin="6"
+                              Visibility="{Binding PinVisibility}" />
+                </Grid>
+
+                <!-- Footer -->
+                <Grid Grid.Row="2" Background="{Binding FooterBackground}" Padding="12,0">
+                    <TextBlock Text="{Binding FooterText}" FontSize="11" Foreground="{Binding SecondaryTextBrush}"
+                               VerticalAlignment="Center" HorizontalAlignment="{Binding FooterAlignment}"
+                               TextTrimming="CharacterEllipsis" />
+                </Grid>
+            </Grid>
+        </Border>
+    </Border>
+</UserControl>

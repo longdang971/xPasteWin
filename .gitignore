@@ -1,0 +1,29 @@
+## .NET / Visual Studio
+bin/
+obj/
+.vs/
+*.user
+*.suo
+*.cache
+_ReSharper*/
+*.DotSettings.user
+
+## Build output
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+ARM64/
+[Bb]uild/
+publish/
+dist/
+
+## Tài liệu thiết kế nội bộ (không cần để build app)
+docs/
+
+## Rider
+.idea/
+
+## OS
+.DS_Store
+Thumbs.db

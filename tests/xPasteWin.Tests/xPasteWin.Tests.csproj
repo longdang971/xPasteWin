@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.*" />
+    <PackageReference Include="xunit" Version="2.*" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.*" />
+  </ItemGroup>
+
+  <!-- Include trực tiếp các file logic thuần (không phụ thuộc WinUI/WinRT) để test
+       chạy được trên bất kỳ máy .NET nào, không cần Windows App SDK runtime. -->
+  <ItemGroup>
+    <Compile Include="..\..\src\xPasteWin\Models\ClipboardItem.cs" Link="src\ClipboardItem.cs" />
+    <Compile Include="..\..\src\xPasteWin\Models\ClipboardTab.cs" Link="src\ClipboardTab.cs" />
+    <Compile Include="..\..\src\xPasteWin\Services\SettingsService.cs" Link="src\SettingsService.cs" />
+    <Compile Include="..\..\src\xPasteWin\Services\ClipboardStore.cs" Link="src\ClipboardStore.cs" />
+    <Compile Include="..\..\src\xPasteWin\Interop\ClipboardFormats.cs" Link="src\ClipboardFormats.cs" />
+    <Compile Include="..\..\src\xPasteWin\ViewModels\SelectionModel.cs" Link="src\SelectionModel.cs" />
+  </ItemGroup>
+</Project>

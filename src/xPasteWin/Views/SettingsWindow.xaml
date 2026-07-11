@@ -1,0 +1,30 @@
+<Window
+    x:Class="xPasteWin.Views.SettingsWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Grid x:Name="Root" Background="Transparent">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="210" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+
+        <!-- Sidebar (nền mờ trên acrylic; màu set theo theme ở code-behind) -->
+        <Border x:Name="SidebarBorder" Grid.Column="0" BorderThickness="0,0,1,0">
+            <StackPanel x:Name="Sidebar" Padding="10,44,10,10" Spacing="4" />
+        </Border>
+
+        <!-- Content (trong suốt để lộ acrylic) -->
+        <ScrollViewer Grid.Column="1" Padding="28,44,28,28" Background="Transparent"
+                      HorizontalContentAlignment="Stretch">
+            <StackPanel Spacing="16" HorizontalAlignment="Stretch">
+                <TextBlock x:Name="TabTitle" FontSize="26" FontWeight="Bold" />
+                <ContentControl x:Name="TabHost" HorizontalContentAlignment="Stretch"
+                                HorizontalAlignment="Stretch" />
+            </StackPanel>
+        </ScrollViewer>
+
+        <!-- Vùng kéo cửa sổ (title bar được mở rộng vào nội dung, dark liền mạch) -->
+        <Border x:Name="DragRegion" Grid.ColumnSpan="2" Height="40"
+                VerticalAlignment="Top" Background="Transparent" />
+    </Grid>
+</Window>
