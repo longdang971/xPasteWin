@@ -199,8 +199,20 @@ public sealed partial class PanelWindow : Window
 
     private void OnHookMouse(int x, int y)
     {
-        // Menu/dialog đang mở (_suppressHide) → KHÔNG ẩn gì (kể cả preview), tránh đóng panel giữa chừng.
-        if (!IsPanelVisible || _suppressHide) return;
+        if (!IsPanelVisible) return;
+
+        // Menu "…" đang mở: click vào panel HOẶC menu (cùng process) → để chúng tự xử lý (chọn mục /
+        // light-dismiss). Click ra NGOÀI (desktop/app khác) → đóng cả menu lẫn panel ngay một cú click
+        // (trước đây phải click 2 lần: 1 lần tắt menu, 1 lần tắt panel).
+        if (_moreMenu is { } moreMenu)
+        {
+            if (IsOwnWindowAt(x, y)) return;
+            DispatcherQueue.TryEnqueue(() => { moreMenu.Hide(); if (IsPanelVisible) HidePanel(); });
+            return;
+        }
+
+        // Dialog xác nhận / context menu thẻ đang mở → KHÔNG ẩn gì (kể cả preview), tránh đóng panel giữa chừng.
+        if (_suppressHide) return;
         bool insidePanel = InRect(_hwnd, x, y);
         if (PreviewOpen)
         {
@@ -287,46 +299,42 @@ public sealed partial class PanelWindow : Window
         sb.Begin();
     }
 
-    // Menu "…" hiện tại (nếu đang mở). Giữ tham chiếu để đóng khi panel ẩn/hiện lại.
+    // Menu "…" hiện tại (nếu đang mở). Giữ tham chiếu để đóng khi panel ẩn/hiện lại + để LL-hook
+    // biết menu đang mở mà xử lý click ra ngoài.
     private MenuFlyout? _moreMenu;
-    // Đã chọn một MỤC trong menu "…" (khác với đóng menu do click ra ngoài) — quyết định ở Closed
-    // có nên đóng panel hay không.
-    private bool _moreMenuItemInvoked;
 
     private void ShowMoreMenu()
     {
         var menu = new MenuFlyout();
         var clear = new MenuFlyoutItem { Text = "Clear History", Icon = new SymbolIcon(Symbol.Delete) };
-        clear.Click += async (_, _) => { _moreMenuItemInvoked = true; await ClearHistoryConfirmAsync(); };
+        clear.Click += async (_, _) => await ClearHistoryConfirmAsync();
         menu.Items.Add(clear);
 
         var update = new MenuFlyoutItem { Text = "Check for Updates…", Icon = new SymbolIcon(Symbol.Refresh) };
-        update.Click += (_, _) => { _moreMenuItemInvoked = true; HidePanel(); UpdateRequested?.Invoke(); };
+        update.Click += (_, _) => { HidePanel(); UpdateRequested?.Invoke(); };
         menu.Items.Add(update);
 
         menu.Items.Add(new MenuFlyoutSeparator());
         var settings = new MenuFlyoutItem { Text = "Settings…", Icon = new SymbolIcon(Symbol.Setting) };
-        settings.Click += (_, _) => { _moreMenuItemInvoked = true; HidePanel(); SettingsRequested?.Invoke(); };
+        settings.Click += (_, _) => { HidePanel(); SettingsRequested?.Invoke(); };
         menu.Items.Add(settings);
         var quit = new MenuFlyoutItem { Text = "Quit xPaste" };
-        quit.Click += (_, _) => { _moreMenuItemInvoked = true; QuitRequested?.Invoke(); };
+        quit.Click += (_, _) => QuitRequested?.Invoke();
         menu.Items.Add(quit);
 
         _moreMenu = menu;
-        _moreMenuItemInvoked = false;
-        _suppressHide = true;   // trong lúc menu mở, LL-hook không tự đóng panel; xử lý dồn vào Closed
-        menu.Closed += (_, _) =>
-        {
-            _suppressHide = false;
-            _moreMenu = null;
-            if (_moreMenuItemInvoked) return;    // đã chọn 1 mục → mục tự xử lý (Settings/Quit/Update…)
-            // Menu đóng do click chỗ khác (light-dismiss). Nếu con trỏ đang NGOÀI panel → đóng luôn panel
-            // (một cú click: vừa tắt menu vừa tắt panel), thay vì phải click 2 lần như trước.
-            Win32.GetCursorPos(out var pt);
-            if (!InRect(_hwnd, pt.X, pt.Y))
-                DispatcherQueue.TryEnqueue(() => { if (IsPanelVisible) HidePanel(); });
-        };
+        menu.Closed += (_, _) => _moreMenu = null;
         menu.ShowAt(MoreButton);
+    }
+
+    // Cửa sổ dưới điểm (x,y) có thuộc process xPaste không (panel HOẶC popup menu "…")?
+    // Dùng để phân biệt click vào UI của mình với click ra ngoài (desktop/app khác).
+    private static bool IsOwnWindowAt(int x, int y)
+    {
+        var hw = Win32.WindowFromPoint(new Win32.POINT { X = x, Y = y });
+        if (hw == IntPtr.Zero) return false;
+        Win32.GetWindowThreadProcessId(hw, out uint pid);
+        return pid == (uint)Environment.ProcessId;
     }
 
     // ---------- Dialog xác nhận lái bằng bàn phím (panel non-activating) ----------

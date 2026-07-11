@@ -96,9 +96,14 @@ public sealed partial class SettingsWindow : Window
         Select(_tab);     // dựng lại nội dung tab hiện tại
     }
 
-    /// <summary>Mở thẳng tab About (menu "…" trên panel gọi). KHÔNG tự kiểm tra — chờ người dùng bấm nút.</summary>
-    public void GoToAbout()
+    // Được đặt true ngay trước khi dựng tab About để tự chạy kiểm tra cập nhật một lần (vào từ menu "…").
+    private bool _autoCheckOnAboutBuild;
+
+    /// <summary>Mở thẳng tab About. autoCheck=true (menu "…" trên panel) → kiểm tra NGAY;
+    /// false (bấm About ở sidebar Settings) → chờ người dùng bấm nút.</summary>
+    public void GoToAbout(bool autoCheck = false)
     {
+        _autoCheckOnAboutBuild = autoCheck;
         Select("About");
         Activate();
     }
@@ -554,7 +559,7 @@ public sealed partial class SettingsWindow : Window
         UpdateInfo? pending = null;
         string? downloadedPath = null;
 
-        btn.Click += async (_, _) =>
+        async System.Threading.Tasks.Task RunStepAsync()
         {
             switch (mode)
             {
@@ -616,11 +621,21 @@ public sealed partial class SettingsWindow : Window
                     if (pending != null) UpdateService.OpenReleasePage(pending);
                     break;
             }
-        };
+        }
+
+        btn.Click += async (_, _) => await RunStepAsync();
 
         sp.Children.Add(status);
         sp.Children.Add(bar);
         sp.Children.Add(btn);
+
+        // Vào tab About từ menu "…" trên panel → kiểm tra NGAY. Vào từ sidebar Settings → chờ bấm nút.
+        if (_autoCheckOnAboutBuild)
+        {
+            _autoCheckOnAboutBuild = false;
+            DispatcherQueue.TryEnqueue(async () => await RunStepAsync());
+        }
+
         return Card(sp);
     }
 }

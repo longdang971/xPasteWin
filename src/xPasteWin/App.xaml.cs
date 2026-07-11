@@ -145,12 +145,12 @@ public partial class App : Application
         if (_settingsWindow != null)
         {
             _settingsWindow.Activate();
-            if (about) _settingsWindow.GoToAbout();
+            if (about) _settingsWindow.GoToAbout(autoCheck: true);
             return;
         }
         _settingsWindow = new SettingsWindow(_settings, _store, _hotkey, _tray, Quit);
         _settingsWindow.Closed += (_, _) => _settingsWindow = null;
         _settingsWindow.Activate();
-        if (about) _settingsWindow.GoToAbout();
+        if (about) _settingsWindow.GoToAbout(autoCheck: true);
     }
 }
