@@ -48,7 +48,8 @@ public partial class App : Application
         _panel = new PanelWindow(_settings);
         _panel.Bind(_panelVm);
         _panel.CloseRequested += () => _panel.DispatcherQueue.TryEnqueue(() => _panel.HidePanel());
-        _panel.SettingsRequested += () => _panel.DispatcherQueue.TryEnqueue(OpenSettings);
+        _panel.SettingsRequested += () => _panel.DispatcherQueue.TryEnqueue(() => OpenSettings());
+        _panel.UpdateRequested += () => _panel.DispatcherQueue.TryEnqueue(() => OpenSettings(about: true));
         _panel.QuitRequested += () => _panel.DispatcherQueue.TryEnqueue(Quit);
         // Panel cần được kích hoạt một lần để dựng cây visual, rồi ẩn ngay.
         _panel.Activate();
@@ -92,7 +93,7 @@ public partial class App : Application
             _panelVm.Refresh();
             _panel.ShowPanel();
         });
-        _tray.SettingsRequested += () => _panel.DispatcherQueue.TryEnqueue(OpenSettings);
+        _tray.SettingsRequested += () => _panel.DispatcherQueue.TryEnqueue(() => OpenSettings());
         _tray.QuitRequested += () => _panel.DispatcherQueue.TryEnqueue(Quit);
         _tray.Show();
         _tray.SetVisible(_settings.Get("showTrayIcon", true));
@@ -139,15 +140,17 @@ public partial class App : Application
 
     private SettingsWindow? _settingsWindow;
 
-    private void OpenSettings()
+    private void OpenSettings(bool about = false)
     {
         if (_settingsWindow != null)
         {
             _settingsWindow.Activate();
+            if (about) _settingsWindow.GoToAbout();
             return;
         }
-        _settingsWindow = new SettingsWindow(_settings, _store, _hotkey, _tray);
+        _settingsWindow = new SettingsWindow(_settings, _store, _hotkey, _tray, Quit);
         _settingsWindow.Closed += (_, _) => _settingsWindow = null;
         _settingsWindow.Activate();
+        if (about) _settingsWindow.GoToAbout();
     }
 }

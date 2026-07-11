@@ -22,6 +22,7 @@ public sealed partial class SettingsWindow : Window
     private readonly ClipboardStore _store;
     private readonly HotkeyService _hotkey;
     private readonly TrayService _tray;
+    private readonly Action? _quit;   // đóng app "sạch" để bộ cài update ghi đè được file đang chạy
     private readonly IntPtr _hwnd;
 
     private readonly List<Button> _navButtons = new();
@@ -36,9 +37,9 @@ public sealed partial class SettingsWindow : Window
     private static readonly Brush AccentBg = new SolidColorBrush(Windows.UI.Color.FromArgb(0xFF, 0x0A, 0x84, 0xFF)); // accent giữ cả 2 theme
     private static Brush AccentText => ThemeService.AccentText;
 
-    public SettingsWindow(ISettings settings, ClipboardStore store, HotkeyService hotkey, TrayService tray)
+    public SettingsWindow(ISettings settings, ClipboardStore store, HotkeyService hotkey, TrayService tray, Action? quit = null)
     {
-        _settings = settings; _store = store; _hotkey = hotkey; _tray = tray;
+        _settings = settings; _store = store; _hotkey = hotkey; _tray = tray; _quit = quit;
         InitializeComponent();
         _hwnd = WindowNative.GetWindowHandle(this);
 
@@ -93,6 +94,13 @@ public sealed partial class SettingsWindow : Window
         ApplyTheme();
         BuildSidebar();   // dựng lại để cập nhật màu chữ/nút theo theme
         Select(_tab);     // dựng lại nội dung tab hiện tại
+    }
+
+    /// <summary>Mở thẳng tab About (menu "…" trên panel gọi). KHÔNG tự kiểm tra — chờ người dùng bấm nút.</summary>
+    public void GoToAbout()
+    {
+        Select("About");
+        Activate();
     }
 
     // Theo lựa chọn Appearance (System/Light/Dark). Built-in control + ThemeResource tự đổi theo RequestedTheme;
@@ -527,8 +535,92 @@ public sealed partial class SettingsWindow : Window
             sp.Children.Add(new Image { Width = 72, Height = 72, Source = img, Margin = new Thickness(0, 0, 0, 6) });
         }
         sp.Children.Add(new TextBlock { Text = "xPaste", FontSize = 16, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, HorizontalAlignment = HorizontalAlignment.Center });
-        sp.Children.Add(new TextBlock { Text = "Version 1.0.0", FontSize = 13, Foreground = TextSecondary, HorizontalAlignment = HorizontalAlignment.Center });
+        sp.Children.Add(new TextBlock { Text = $"Version {UpdateService.CurrentVersionText}", FontSize = 13, Foreground = TextSecondary, HorizontalAlignment = HorizontalAlignment.Center });
         sp.Children.Add(new TextBlock { Text = "Powered by LQ Team", FontSize = 13, Foreground = TextSecondary, HorizontalAlignment = HorizontalAlignment.Center });
+
+        // Dòng trạng thái + thanh tiến trình (tải) + nút. Chỉ kiểm tra khi người dùng bấm nút.
+        var status = new TextBlock
+        {
+            FontSize = 12.5, Foreground = TextSecondary,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            TextWrapping = TextWrapping.Wrap, TextAlignment = TextAlignment.Center,
+            Margin = new Thickness(0, 12, 0, 0), MaxWidth = 380,
+        };
+        var bar = new ProgressBar { Width = 240, Margin = new Thickness(0, 8, 0, 0), Visibility = Visibility.Collapsed };
+        var btn = new Button { Content = "Check for Updates", Margin = new Thickness(0, 12, 0, 0), HorizontalAlignment = HorizontalAlignment.Center };
+
+        // Máy trạng thái nút: check → download → install (hoặc → page nếu không có bộ cài / lỗi).
+        string mode = "check";
+        UpdateInfo? pending = null;
+        string? downloadedPath = null;
+
+        btn.Click += async (_, _) =>
+        {
+            switch (mode)
+            {
+                case "check":
+                    btn.IsEnabled = false;
+                    status.Text = "Checking for updates…";
+                    var info = await UpdateService.CheckAsync();
+                    btn.IsEnabled = true;
+                    if (info is null)
+                    {
+                        status.Text = $"You’re on the latest version ({UpdateService.CurrentVersionText}).";
+                        btn.Content = "Check for Updates";
+                        mode = "check";
+                    }
+                    else
+                    {
+                        pending = info;
+                        status.Text = $"New version {info.Version.ToString(3)} is available.";
+                        if (UpdateService.HasInstaller(info)) { mode = "download"; btn.Content = "Download & Install"; }
+                        else { mode = "page"; btn.Content = "Open Download Page"; }
+                    }
+                    break;
+
+                case "download":
+                    btn.IsEnabled = false;
+                    bar.Visibility = Visibility.Visible; bar.IsIndeterminate = false; bar.Value = 0;
+                    status.Text = "Downloading update…";
+                    try
+                    {
+                        var prog = new Progress<double>(p =>
+                        {
+                            if (p < 0) { bar.IsIndeterminate = true; }
+                            else { bar.IsIndeterminate = false; bar.Value = p * 100; status.Text = $"Downloading update… {(int)(p * 100)}%"; }
+                        });
+                        downloadedPath = await UpdateService.DownloadInstallerAsync(pending!, prog);
+                        bar.Visibility = Visibility.Collapsed;
+                        status.Text = "Ready to install. xPaste will close to apply the update.";
+                        mode = "install"; btn.Content = "Install & Restart"; btn.IsEnabled = true;
+                    }
+                    catch
+                    {
+                        bar.Visibility = Visibility.Collapsed;
+                        status.Text = "Download failed — check your connection or open the download page.";
+                        mode = "page"; btn.Content = "Open Download Page"; btn.IsEnabled = true;
+                    }
+                    break;
+
+                case "install":
+                    if (UpdateService.LaunchInstaller(downloadedPath!))
+                        _quit?.Invoke();   // đóng app sạch → Inno Setup ghi đè file đang chạy
+                    else
+                    {
+                        status.Text = "Couldn’t start the installer. Try the download page.";
+                        mode = "page"; btn.Content = "Open Download Page";
+                    }
+                    break;
+
+                case "page":
+                    if (pending != null) UpdateService.OpenReleasePage(pending);
+                    break;
+            }
+        };
+
+        sp.Children.Add(status);
+        sp.Children.Add(bar);
+        sp.Children.Add(btn);
         return Card(sp);
     }
 }

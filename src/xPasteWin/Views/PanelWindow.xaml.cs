@@ -48,9 +48,10 @@ public sealed partial class PanelWindow : Window
     public event Action? Hidden;
     /// <summary>Yêu cầu ẩn panel (Escape).</summary>
     public event Action? CloseRequested;
-    /// <summary>Menu "…": mở Settings / Quit.</summary>
+    /// <summary>Menu "…": mở Settings / Quit / Check for Updates.</summary>
     public event Action? SettingsRequested;
     public event Action? QuitRequested;
+    public event Action? UpdateRequested;
 
     public PanelWindow(ISettings settings)
     {
@@ -286,22 +287,45 @@ public sealed partial class PanelWindow : Window
         sb.Begin();
     }
 
+    // Menu "…" hiện tại (nếu đang mở). Giữ tham chiếu để đóng khi panel ẩn/hiện lại.
+    private MenuFlyout? _moreMenu;
+    // Đã chọn một MỤC trong menu "…" (khác với đóng menu do click ra ngoài) — quyết định ở Closed
+    // có nên đóng panel hay không.
+    private bool _moreMenuItemInvoked;
+
     private void ShowMoreMenu()
     {
         var menu = new MenuFlyout();
         var clear = new MenuFlyoutItem { Text = "Clear History", Icon = new SymbolIcon(Symbol.Delete) };
-        clear.Click += async (_, _) => await ClearHistoryConfirmAsync();
+        clear.Click += async (_, _) => { _moreMenuItemInvoked = true; await ClearHistoryConfirmAsync(); };
         menu.Items.Add(clear);
+
+        var update = new MenuFlyoutItem { Text = "Check for Updates…", Icon = new SymbolIcon(Symbol.Refresh) };
+        update.Click += (_, _) => { _moreMenuItemInvoked = true; HidePanel(); UpdateRequested?.Invoke(); };
+        menu.Items.Add(update);
+
         menu.Items.Add(new MenuFlyoutSeparator());
         var settings = new MenuFlyoutItem { Text = "Settings…", Icon = new SymbolIcon(Symbol.Setting) };
-        settings.Click += (_, _) => { HidePanel(); SettingsRequested?.Invoke(); };
+        settings.Click += (_, _) => { _moreMenuItemInvoked = true; HidePanel(); SettingsRequested?.Invoke(); };
         menu.Items.Add(settings);
         var quit = new MenuFlyoutItem { Text = "Quit xPaste" };
-        quit.Click += (_, _) => QuitRequested?.Invoke();
+        quit.Click += (_, _) => { _moreMenuItemInvoked = true; QuitRequested?.Invoke(); };
         menu.Items.Add(quit);
 
-        _suppressHide = true;
-        menu.Closed += (_, _) => _suppressHide = false;
+        _moreMenu = menu;
+        _moreMenuItemInvoked = false;
+        _suppressHide = true;   // trong lúc menu mở, LL-hook không tự đóng panel; xử lý dồn vào Closed
+        menu.Closed += (_, _) =>
+        {
+            _suppressHide = false;
+            _moreMenu = null;
+            if (_moreMenuItemInvoked) return;    // đã chọn 1 mục → mục tự xử lý (Settings/Quit/Update…)
+            // Menu đóng do click chỗ khác (light-dismiss). Nếu con trỏ đang NGOÀI panel → đóng luôn panel
+            // (một cú click: vừa tắt menu vừa tắt panel), thay vì phải click 2 lần như trước.
+            Win32.GetCursorPos(out var pt);
+            if (!InRect(_hwnd, pt.X, pt.Y))
+                DispatcherQueue.TryEnqueue(() => { if (IsPanelVisible) HidePanel(); });
+        };
         menu.ShowAt(MoreButton);
     }
 
@@ -682,6 +706,9 @@ public sealed partial class PanelWindow : Window
 
     public void ShowPanel()
     {
+        // Menu "…" có thể còn mở từ lần trước (panel ẩn bằng hotkey/tray khi menu đang bật) → đóng lại.
+        _moreMenu?.Hide();
+
         var (x, y, w, h) = TargetRect();
         var (sx, sy) = OffscreenOrigin(x, y, w, h);
         Win32.SetWindowPos(_hwnd, Win32.HWND_TOPMOST, sx, sy, w, h,

@@ -4,6 +4,9 @@
     <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
     <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
     <RootNamespace>xPasteWin</RootNamespace>
+    <!-- Version của app: UpdateService đọc từ đây để so với bản mới nhất trên GitHub.
+         GIỮ ĐỒNG BỘ với MyAppVersion trong installer\xPaste.iss mỗi lần phát hành. -->
+    <Version>1.0.0</Version>
     <UseWinUI>true</UseWinUI>
     <WindowsPackageType>None</WindowsPackageType>
     <EnableMsixTooling>true</EnableMsixTooling>
