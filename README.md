@@ -1,120 +1,191 @@
 # xPaste for Windows
 
-**Trình quản lý clipboard (clipboard manager) cho Windows** — bản dựng lại của app macOS *xPaste* bằng **WinUI 3 / .NET 8**. Bảng lịch sử kính mờ trượt ra từ mép màn hình bằng phím tắt, lưu lại mọi thứ bạn đã sao chép và dán lại chỉ với một cú nhấp — mà **không giành focus** khỏi ứng dụng đang dùng.
+**Clipboard manager cấp chuyên nghiệp cho Windows** — quản lý toàn bộ lịch sử sao chép với giao diện hiện đại, tìm kiếm nhanh và ghim mục quan trọng.
 
-> Windows 10 (build 17763+) hoặc Windows 11 · x64
+> **Yêu cầu:** Windows 10 (build 17763+) hoặc Windows 11 · x64
 
 ---
 
-## ✨ Tính năng
+## ✨ Tính năng chính
 
-- 📋 **Lịch sử clipboard** đầy đủ loại: văn bản, **URL**, **ảnh**, **file**, **thư mục**.
-- 🔍 **Tìm kiếm** tức thì, **ghim (pin)** mục quan trọng, 2 tab **Clipboard / Pin**.
-- 🖼️ **Xem trước (Quick Look)** bằng phím `Space`: văn bản cuộn được, ảnh lớn, danh sách file, và **web preview** cho URL (WebView2).
-- 🔗 **Link preview**: tự lấy tiêu đề + ảnh (OpenGraph) hoặc favicon cho link đã sao chép.
-- 🎨 **Ô màu**: sao chép mã màu `#hex` / `rgb()` / `hsl()` → thẻ hiển thị đúng màu đó.
-- 🅰️ **Nhận diện app nguồn**: hiện icon app đã sao chép + tô màu accent trích từ icon.
-- 🌗 **Giao diện Sáng / Tối / Theo hệ thống** — bám theo Windows và **đổi ngay** khi bạn đổi theme Windows.
-- ⌨️ **Dán không giành focus** (nonactivating panel) → app đích luôn nhận được nội dung dán.
-- 🚀 **Phím tắt** (mặc định `Ctrl+Shift+V`), **tray icon**, **khởi động cùng Windows**.
-- 🔒 **Riêng tư**: ẩn khi chia sẻ màn hình, bỏ qua nội dung mật/tạm thời (password manager), danh sách app bỏ qua.
-- 🧹 **Giữ lịch sử** theo Ngày/Tuần/Tháng/Năm/Vĩnh viễn, tuỳ chọn xoá khi máy ngủ / đăng xuất.
-- 📐 **Panel responsive** — chiếm ~28% màn hình ở mọi độ phân giải & mức scale, chọn được vị trí (dưới/trên/trái/phải).
+### 📋 **Lịch sử clipboard toàn diện**
+- Hỗ trợ mọi loại dữ liệu: văn bản, **URL**, **ảnh**, **file**, **thư mục**
+- Tìm kiếm tức thì với bộ lọc thông minh
+- Ghim (pin) các mục quan trọng để dễ tìm lại
+
+### 🖼️ **Xem trước nhanh chóng (Quick Look)**
+Nhấn `Space` để xem trước tức thì:
+- Văn bản có thể cuộn đọc được
+- Ảnh hiển thị full size
+- Danh sách file/thư mục có cấu trúc
+- Web preview cho các URL (dùng WebView2)
+
+### 🔗 **Link preview thông minh**
+- Tự động lấy tiêu đề + ảnh từ OpenGraph
+- Hiển thị favicon cho link đã sao chép
+- Dễ dàng nhận diện và quản lý URL
+
+### 🎨 **Hỗ trợ màu sắc**
+- Nhận diện và hiển thị mã màu `#hex`, `rgb()`, `hsl()`
+- Ô màu preview cho từng mục sao chép được màu
+
+### 🅰️ **Ứng dụng nguồn thông minh**
+- Hiển thị icon của app mà bạn sao chép
+- Tô màu accent trích từ icon ứng dụng
+- Dễ dàng quản lý theo nguồn
+
+### 🌗 **Giao diện linh hoạt**
+- Chế độ Sáng / Tối / Theo hệ thống
+- Tự động tuân theo Windows Theme
+- Đổi giao diện ngay lập tức mà không cần khởi động lại
+
+### ⌨️ **Dán không giành focus**
+Panel dán mà **không chiếm quyền điều khiển** — ứng dụng đích luôn nhận được nội dung đúng lúc
+
+### 🚀 **Phím tắt & Tiện ích**
+- Phím tắt toàn cục (mặc định `Ctrl+Shift+V`)
+- Tray icon với menu nhanh
+- Khởi động cùng Windows
+- Có thể tùy chỉnh tất cả
+
+### 🔒 **Riêng tư & An toàn**
+- Ẩn tự động khi chia sẻ màn hình
+- Bỏ qua nội dung từ password manager
+- Danh sách app bỏ qua (sensitive apps)
+- Không theo dõi dữ liệu ngoài local
+
+### 🧹 **Quản lý lịch sử linh hoạt**
+Chọn thời gian giữ lịch: Ngày / Tuần / Tháng / Năm / Vĩnh viễn
+- Tuỳ chọn xoá tự động khi máy ngủ / đăng xuất
+- Kiểm soát hoàn toàn dung lượng lưu trữ
+
+### 📐 **Panel responsive**
+- Chiếm ~28% màn hình ở mọi độ phân giải
+- Tự động scale theo DPI system
+- Chọn vị trí: dưới / trên / trái / phải
 
 ---
 
 ## 📥 Cài đặt
 
-### Cách 1 — Dùng bộ cài (khuyến nghị)
-Tải/chạy **`xPaste-Setup-*.exe`** → cài mặc định vào `C:\Program Files\xPaste`, tạo shortcut Start Menu (và Desktop nếu chọn).
+### Cách 1 — Bộ cài (Khuyến nghị)
+1. Tải **`xPaste-Setup-*.exe`** từ [Releases](../../releases)
+2. Chạy installer → cài mặc định vào `C:\Program Files\xPaste`
+3. Tạo shortcut tự động trong Start Menu (và Desktop nếu chọn)
 
-> Bộ cài **self-contained** — đã nhúng sẵn .NET 8 + Windows App SDK, **máy đích không cần cài thêm gì**.
+> ✅ **Self-contained** — đã nhúng sẵn .NET 8 + Windows App SDK
 >
-> Vì bộ cài chưa ký số, Windows SmartScreen có thể báo *"Windows protected your PC"* → bấm **More info → Run anyway**.
+> ⚠️ Vì chưa ký số, Windows SmartScreen có thể cảnh báo → nhấp **More info → Run anyway**
 
-Gỡ cài đặt: **Settings → Apps → xPaste → Uninstall** (hoặc shortcut Uninstall trong Start Menu).
+**Gỡ cài đặt:** Settings → Apps → xPaste → Uninstall
 
-### Cách 2 — Bản portable
-Chép cả thư mục `dist\xPasteWin-win-x64\` sang máy Windows x64 bất kỳ và chạy `xPasteWin.exe` (không cần cài).
+### Cách 2 — Bản portable (Không cần cài)
+1. Sao chép cả thư mục `dist\xPasteWin-win-x64\` sang máy Windows x64
+2. Chạy `xPasteWin.exe` trực tiếp
 
 ---
 
-## 🕹️ Sử dụng
+## 🕹️ Cách sử dụng
 
-1. Nhấn **`Ctrl+Shift+V`** (hoặc click trái **icon tray**) để mở bảng lịch sử.
-2. **Click** một thẻ để chọn, **double-click** để dán ngay vào app đang dùng.
-3. **`Space`** xem trước · **`←/→`** điều hướng · **`Enter`** dán · **`Shift+Enter`** dán không định dạng · **`Ctrl+C`** copy · **`Delete`** xoá · **`Esc`** đóng.
-4. **Chuột phải** một thẻ để có menu: Paste / Copy / Open URL / Delete / Pin / Preview…
-5. Nút **"…"** → **Settings** để đổi phím tắt, vị trí panel, giao diện, quyền riêng tư, thời gian giữ lịch sử.
+### Mở Panel
+- Nhấn **`Ctrl+Shift+V`** hoặc click trái **icon tray**
+
+### Điều hướng & Thao tác
+| Phím | Chức năng |
+|---|---|
+| **Click** | Chọn một mục |
+| **Double-click** | Dán ngay vào app hiện tại |
+| **`Space`** | Xem trước nội dung |
+| **`←/→`** | Điều hướng giữa các mục |
+| **`Enter`** | Dán nội dung đã chọn |
+| **`Shift+Enter`** | Dán không định dạng (plain text) |
+| **`Ctrl+C`** | Copy lại nội dung |
+| **`Delete`** | Xoá mục |
+| **`Esc`** | Đóng panel |
+
+### Menu Chuột Phải
+Right-click một mục để:
+- Paste / Copy / Delete / Pin
+- Mở URL (nếu là link)
+- Xem chi tiết & Preview
+
+### Cấu Hình
+Nhấp nút **"..."** → **Settings**:
+- 🎹 Đổi phím tắt
+- 📍 Chọn vị trí panel
+- 🎨 Giao diện (Sáng/Tối/Hệ thống)
+- 🔒 Quyền riêng tư
+- ⏱️ Thời gian giữ lịch
 
 ---
 
 ## 🔨 Build từ mã nguồn
 
 ### Yêu cầu
-- **.NET 8 SDK** — <https://dotnet.microsoft.com/download/dotnet/8.0>
-- **Windows App SDK 1.6** — cài kèm workload **".NET Desktop Development" + WinUI** của Visual Studio 2022, hoặc cài riêng Windows App SDK runtime/SDK.
+- **.NET 8 SDK** → https://dotnet.microsoft.com/download/dotnet/8.0
+- **Windows App SDK 1.6** → Cài qua Visual Studio 2022 (workload ".NET Desktop Development + WinUI") hoặc riêng
 
-### Build & chạy thử (Debug)
+### Clone & Build
 ```powershell
 git clone https://github.com/longdang971/xPasteWin
 cd xPasteWin
 
+# Build
 dotnet build xPasteWin.sln -c Release -p:Platform=x64
-dotnet run --project src/xPasteWin           # chạy thử
-dotnet test tests/xPasteWin.Tests            # unit test (logic thuần)
+
+# Chạy thử
+dotnet run --project src/xPasteWin
+
+# Unit test
+dotnet test tests/xPasteWin.Tests
 ```
 
-### Build bản Release **self-contained** (nhúng sẵn thư viện)
-
-Đây là bản để phân phối: **nhúng cả .NET runtime lẫn Windows App SDK** vào output, nên **người dùng cuối KHÔNG cần cài .NET hay Windows App Runtime**.
+### Publish Self-Contained (Để phân phối)
+Tạo bản chứa đầy đủ .NET runtime + Windows App SDK:
 
 ```powershell
 dotnet publish src/xPasteWin/xPasteWin.csproj -c Release -p:Platform=x64 -r win-x64 `
     -p:SelfContained=true --self-contained -o dist\xPasteWin-win-x64
 ```
 
-- Kết quả nằm ở **`dist\xPasteWin-win-x64\`** (~160 MB, gồm `xPasteWin.exe` + toàn bộ thư viện).
-- Chạy `xPasteWin.exe` trong đó là dùng được ngay trên máy Windows x64 sạch (chưa cài .NET).
-- Việc nhúng Windows App SDK đã bật sẵn trong `xPasteWin.csproj` (`WindowsAppSDKSelfContained=true`).
+Kết quả: `dist\xPasteWin-win-x64\xPasteWin.exe` (~160 MB) — chạy được trên Windows sạch.
 
-### Đóng gói thành bộ cài `.exe` (Inno Setup)
-
+### Đóng Gói thành Installer
 ```powershell
-# 1) Cài Inno Setup (một lần)
+# Cài Inno Setup (một lần)
 winget install JRSoftware.InnoSetup
 
-# 2) Đảm bảo đã publish self-contained vào dist\xPasteWin-win-x64 (bước trên)
-
-# 3) Compile bộ cài
+# Compile bộ cài
 & "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe" installer\xPaste.iss
 ```
 
-→ Tạo ra **`dist\xPaste-Setup-1.0.0.exe`** — bộ cài vào `C:\Program Files\xPaste`, kèm shortcut + uninstaller. Cấu hình bộ cài ở [`installer/xPaste.iss`](installer/xPaste.iss) (đổi tên/phiên bản/icon tại đây).
+→ Tạo ra **`dist\xPaste-Setup-1.0.0.exe`** (có uninstaller)
 
 ---
 
-## 🧱 Kiến trúc (tóm tắt)
+## 🧱 Kiến trúc & Công Nghệ
 
-| Thành phần | Công nghệ Windows |
+| Thành phần | Giải pháp |
 |---|---|
-| Theo dõi clipboard | `AddClipboardFormatListener` + `WM_CLIPBOARDUPDATE` |
-| Phím tắt toàn cục | `RegisterHotKey` + `WM_HOTKEY` |
-| Panel không giành focus | Cửa sổ borderless + `WS_EX_NOACTIVATE\|TOOLWINDOW` + global hook (`WH_KEYBOARD_LL`/`WH_MOUSE_LL`) |
-| Dán vào app đích | `SetForegroundWindow` + `SendInput` (Ctrl+V) |
-| Nền kính mờ | `DesktopAcrylicController` (tint theo theme) |
-| Tray icon | `H.NotifyIcon` |
-| Lưu trữ | JSON trong `%AppData%\xPaste\` |
+| **Giao diện** | WinUI 3 (.NET 8) |
+| **Theo dõi clipboard** | `AddClipboardFormatListener` + `WM_CLIPBOARDUPDATE` |
+| **Phím tắt toàn cục** | `RegisterHotKey` + `WM_HOTKEY` |
+| **Panel không giành focus** | Borderless window + `WS_EX_NOACTIVATE\|TOOLWINDOW` + global hooks |
+| **Dán vào app** | `SetForegroundWindow` + `SendInput` |
+| **Nền kính mờ** | `DesktopAcrylicController` |
+| **Lưu trữ** | JSON trong `%AppData%\xPaste\` |
+| **Notification** | H.NotifyIcon |
 
-Mã nguồn: `src/xPasteWin/` — `Models/` · `Services/` · `ViewModels/` · `Views/` · `Interop/`.
-
----
-
-## 📝 Ghi chú
-
-- Chạy **non-elevated** (không "Run as administrator") — clipboard manager cần quyền người dùng thường để dán được vào các app khác (do UIPI của Windows).
-- Dữ liệu (lịch sử, cài đặt, cache) nằm ở `%AppData%\xPaste\`; gỡ app không tự xoá — xoá thủ công nếu cần.
+Mã: [`src/xPasteWin/`](src/xPasteWin) — `Models/` · `Services/` · `ViewModels/` · `Views/` · `Interop/`
 
 ---
 
-*Powered by LQ Team.*
+## 📝 Ghi chú quan trọng
+
+- ⚠️ **Chạy non-elevated** (không "Run as administrator") — clipboard manager cần quyền người dùng thường để dán được vào các app khác
+- 📁 **Dữ liệu** nằm ở `%AppData%\xPaste\` — gỡ app không tự xoá, xoá thủ công nếu cần
+- 🔄 **Tự động cập nhật** — app kiểm tra phiên bản mới trên GitHub
+
+---
+
+*Developed with ❤️ by LQ Team*
