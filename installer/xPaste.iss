@@ -1,6 +1,6 @@
 ; Inno Setup script — bộ cài xPaste (WinUI 3 self-contained, cài vào C:\Program Files\xPaste)
 #define MyAppName "xPaste"
-#define MyAppVersion "1.0.0"
+#define MyAppVersion "1.0.1"
 #define MyAppPublisher "LQ Team"
 #define MyAppExeName "xPasteWin.exe"
 

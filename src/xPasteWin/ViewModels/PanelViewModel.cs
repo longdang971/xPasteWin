@@ -55,14 +55,44 @@ public sealed partial class PanelViewModel : ObservableObject
 
     partial void OnActiveTabChanged(ClipboardTab value) => Refresh();
 
-    /// <summary>Dựng lại danh sách card từ store, giữ nguyên selection còn hợp lệ.</summary>
+    /// <summary>Đồng bộ danh sách card từ store, giữ nguyên selection còn hợp lệ.</summary>
     public void Refresh()
     {
-        var items = _store.Displayed(ActiveTab);
-        Cards.Clear();
-        foreach (var it in items) Cards.Add(new CardViewModel(it, _store));
+        SyncCards(_store.Displayed(ActiveTab).ToList());
         Selection.Retain(Cards.Select(c => c.Id).ToHashSet());
         ApplySelectionVisual();
+    }
+
+    /// <summary>
+    /// Cập nhật <see cref="Cards"/> TẠI CHỖ để khớp danh sách mong muốn (khớp theo Id): giữ nguyên
+    /// CardViewModel — và do đó container ListView — cho item không đổi, chỉ thêm/bớt/đổi chỗ phần khác.
+    ///
+    /// Vì sao KHÔNG Clear()+Add() lại: mỗi lần mở panel App gọi Refresh() trước ShowPanel(); nếu dựng
+    /// lại toàn bộ card thì ListView phải tạo lại MỌI container → chữ trong card render lại 2 pha
+    /// (ClearType "đậm" → grayscale "mảnh", do ScaleTransform của ContentHost) → nháy đậm/mảnh mỗi lần
+    /// mở. Giữ container ổn định khi danh sách không đổi (trường hợp phổ biến: mở panel mà chưa copy gì
+    /// mới) → hết nháy, đồng thời đỡ tốn CPU dựng lại thẻ.
+    /// </summary>
+    private void SyncCards(IReadOnlyList<ClipboardItem> desired)
+    {
+        // 1) Bỏ card không còn trong danh sách mong muốn.
+        var desiredIds = desired.Select(i => i.Id).ToHashSet();
+        for (int i = Cards.Count - 1; i >= 0; i--)
+            if (!desiredIds.Contains(Cards[i].Id)) Cards.RemoveAt(i);
+
+        // 2) Duyệt theo đúng thứ tự mong muốn: khớp thì giữ, có sẵn ở chỗ khác thì Move, chưa có thì Insert.
+        for (int i = 0; i < desired.Count; i++)
+        {
+            var id = desired[i].Id;
+            if (i < Cards.Count && Cards[i].Id == id) continue;
+
+            int existing = -1;
+            for (int j = i + 1; j < Cards.Count; j++)
+                if (Cards[j].Id == id) { existing = j; break; }
+
+            if (existing >= 0) Cards.Move(existing, i);
+            else Cards.Insert(i, new CardViewModel(desired[i], _store));
+        }
     }
 
     private List<Guid> OrderedIds() => Cards.Select(c => c.Id).ToList();
