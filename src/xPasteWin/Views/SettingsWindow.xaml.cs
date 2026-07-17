@@ -394,8 +394,8 @@ public sealed partial class SettingsWindow : Window
         col.Children.Add(new Border { Height = 8 });
         col.Children.Add(desc);
         col.Children.Add(Divider());
-        col.Children.Add(Row("Clear history on sleep or sign out",
-            "Erase every item (including pinned) when the PC sleeps or the session ends.", Toggle("clearOnLogout", false)));
+        col.Children.Add(Row("Clear history on sign out or shutdown",
+            "Erase every item (including pinned) when you sign out, restart, or shut down the PC.", Toggle("clearOnLogout", false)));
         return new Border
         {
             Background = CardBg,

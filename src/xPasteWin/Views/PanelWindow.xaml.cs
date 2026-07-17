@@ -52,6 +52,9 @@ public sealed partial class PanelWindow : Window
     public event Action? SettingsRequested;
     public event Action? QuitRequested;
     public event Action? UpdateRequested;
+    /// <summary>Máy sắp NGỦ hoặc phiên sắp KẾT THÚC (đăng xuất/tắt/khởi động lại) → App xoá lịch sử nếu bật.
+    /// Phát ĐỒNG BỘ trên UI thread từ window proc để kịp xoá trước khi tiến trình bị kết thúc.</summary>
+    public event Action? SystemEnding;
 
     public PanelWindow(ISettings settings)
     {
@@ -142,6 +145,15 @@ public sealed partial class PanelWindow : Window
     {
         if (msg == Win32.WM_NCCALCSIZE && wParam != IntPtr.Zero)
             return IntPtr.Zero; // không dành pixel nào cho khung/viền
+
+        // Xoá lịch sử SỚM khi PHIÊN KẾT THÚC (đăng xuất/tắt/khởi động lại). Panel là cửa sổ top-level
+        // (dù đang ẩn) nên NHẬN được WM_ENDSESSION — khác MessageWindow (message-only, HWND_MESSAGE)
+        // vốn KHÔNG nhận. Đây là lớp "best-effort" (xoá đĩa ngay lúc đăng xuất nếu kịp); dù message này
+        // không tới/không kịp thì App vẫn xoá sạch ở LẦN KHỞI ĐỘNG kế tiếp (xem App.OnLaunched) nên
+        // sau khi đăng nhập lại lịch sử chắc chắn trống.
+        if (msg == Win32.WM_ENDSESSION && wParam != IntPtr.Zero)
+            SystemEnding?.Invoke();
+
         return Win32.CallWindowProc(_origWndProc, hWnd, msg, wParam, lParam);
     }
 

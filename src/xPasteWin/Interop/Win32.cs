@@ -8,6 +8,10 @@ internal static class Win32
     public const int WM_HOTKEY = 0x0312;
     public const int WM_CLIPBOARDUPDATE = 0x031D;
 
+    // Kết thúc phiên (đăng xuất/tắt/khởi động lại) — để xoá sớm lịch sử. Gửi tới cửa sổ top-level
+    // (KHÔNG tới message-only window như MessageWindow).
+    public const int WM_ENDSESSION = 0x0016;
+
     public const uint MOD_ALT = 0x1, MOD_CONTROL = 0x2, MOD_SHIFT = 0x4, MOD_WIN = 0x8;
 
     public const int GWL_EXSTYLE = -20;

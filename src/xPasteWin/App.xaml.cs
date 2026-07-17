@@ -28,6 +28,13 @@ public partial class App : Application
         _settings = new SettingsService();
         ThemeService.Init(_settings);
         _store = new ClipboardStore(_settings);
+
+        // Clear-on-sign-out: nếu bật, xoá sạch lịch sử NGAY khi khởi động. Sau khi đăng xuất/tắt/khởi
+        // động lại, app chạy lại cùng Windows → lịch sử trống. Sleep chỉ resume (KHÔNG khởi động lại)
+        // nên lịch sử được giữ — đúng lựa chọn "chỉ xoá khi đăng xuất/tắt". Cách này chắc chắn hoạt
+        // động vì không phụ thuộc việc bắt được message shutdown (thứ không đáng tin trong WinUI 3).
+        if (_settings.Get("clearOnLogout", false)) { _store.WipeDiskFiles(); _store.ClearAll(); }
+
         _msg = new MessageWindow();
         _monitor = new ClipboardMonitor(_msg, _settings);
         _hotkey = new HotkeyService(_msg, _settings);
@@ -99,27 +106,21 @@ public partial class App : Application
         _tray.SetVisible(_settings.Get("showTrayIcon", true));
 
         // Xoá lịch sử khi đăng xuất/tắt máy HOẶC khi máy ngủ (nếu bật) — giống macOS
-        // (willSleepNotification + willPowerOffNotification). Giữ handler làm field để gỡ khi Quit.
-        _onSessionEnding = (_, _) => ClearHistoryForShutdown();
-        _onPowerModeChanged = (_, e) => { if (e.Mode == Microsoft.Win32.PowerModes.Suspend) ClearHistoryForShutdown(); };
-        Microsoft.Win32.SystemEvents.SessionEnding += _onSessionEnding;
-        Microsoft.Win32.SystemEvents.PowerModeChanged += _onPowerModeChanged;
+        // (willSleepNotification + willPowerOffNotification). Nghe qua message của panel (cửa sổ
+        // top-level) thay vì Microsoft.Win32.SystemEvents: SystemEvents KHÔNG nhận được event trong
+        // app WinUI 3 (thiếu message pump WinForms) nên trước đây lịch sử chưa từng được xoá.
+        _panel.SystemEnding += ClearHistoryForShutdown;
     }
 
-    private Microsoft.Win32.SessionEndingEventHandler? _onSessionEnding;
-    private Microsoft.Win32.PowerModeChangedEventHandler? _onPowerModeChanged;
-
-    /// <summary>Clear-on-sleep/logout: xóa ĐĨA đồng bộ ngay (trên thread SystemEvents, an toàn vì chỉ IO),
-    /// còn dọn ObservableCollection thì marshal về UI thread (collection KHÔNG thread-safe).</summary>
+    /// <summary>Clear-on-sleep/logout: chạy ĐỒNG BỘ trên UI thread (do PanelWindow.SystemEnding phát từ
+    /// window proc). Xoá ĐĨA trước (kịp trước khi tiến trình bị kết thúc), rồi dọn ObservableCollection
+    /// (an toàn vì đang ở UI thread).</summary>
     private void ClearHistoryForShutdown()
     {
         if (!_settings.Get("clearOnLogout", false)) return;
         _store.WipeDiskFiles();
-        _panel.DispatcherQueue.TryEnqueue(() =>
-        {
-            _store.ClearAll();
-            if (_panel.IsPanelVisible) _panelVm.Refresh();
-        });
+        _store.ClearAll();
+        if (_panel.IsPanelVisible) _panelVm.Refresh();
     }
 
     private bool _quitting;
@@ -128,8 +129,6 @@ public partial class App : Application
     {
         if (_quitting) return; // chống tái nhập (Quit nối từ panel + tray + menu, có thể kích hoạt sát nhau)
         _quitting = true;
-        if (_onSessionEnding != null) Microsoft.Win32.SystemEvents.SessionEnding -= _onSessionEnding;
-        if (_onPowerModeChanged != null) Microsoft.Win32.SystemEvents.PowerModeChanged -= _onPowerModeChanged;
         _panel.HideImmediately(); // gỡ global hook LL (tránh lag phím/chuột toàn hệ thống khi Quit lúc panel mở)
         _monitor.Stop();
         _hotkey.Unregister();
