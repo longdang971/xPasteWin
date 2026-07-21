@@ -4,6 +4,13 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:views="using:xPasteWin.Views">
     <Grid x:Name="RootGrid" Background="Transparent">
+        <Grid.Resources>
+            <!-- Gạch chân báo tab đang chọn (dùng chung cho tab thường + tab thu gọn lúc search). -->
+            <LinearGradientBrush x:Key="TabUnderlineBrush" StartPoint="0,0" EndPoint="1,0">
+                <GradientStop Color="#7C4DFF" Offset="0" />
+                <GradientStop Color="#E24DFF" Offset="1" />
+            </LinearGradientBrush>
+        </Grid.Resources>
         <Border x:Name="PanelBorder" CornerRadius="0" BorderThickness="0" Background="Transparent">
 
             <Grid x:Name="ContentHost" HorizontalAlignment="Left" VerticalAlignment="Top">
@@ -26,18 +33,28 @@
                                 ToolTipService.ToolTip="Search">
                             <FontIcon Glyph="&#xE721;" FontSize="15" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                         </Button>
-                        <Button x:Name="TabAllButton" Height="30" Padding="12,0" BorderThickness="0"
-                                Background="Transparent">
-                            <StackPanel Orientation="Horizontal" Spacing="6">
-                                <FontIcon Glyph="&#xE81C;" FontSize="13" />
-                                <TextBlock Text="Clipboard" FontSize="13" />
+                        <!-- Tab kiểu chữ + gạch chân màu dưới tab đang chọn (UpdateTabVisual bật/tắt
+                             underline + làm mờ tab không chọn) thay cho kiểu nền pill trước đây. -->
+                        <Button x:Name="TabAllButton" Height="34" Padding="10,0" BorderThickness="0"
+                                Background="Transparent" VerticalAlignment="Center">
+                            <StackPanel Spacing="3">
+                                <StackPanel Orientation="Horizontal" Spacing="6" HorizontalAlignment="Center">
+                                    <FontIcon Glyph="&#xE81C;" FontSize="13" />
+                                    <TextBlock Text="Clipboard History" FontSize="13" />
+                                </StackPanel>
+                                <Border x:Name="TabAllUnderline" Height="2" CornerRadius="1"
+                                        Background="{StaticResource TabUnderlineBrush}" />
                             </StackPanel>
                         </Button>
-                        <Button x:Name="TabPinButton" Height="30" Padding="12,0" BorderThickness="0"
-                                Background="Transparent">
-                            <StackPanel Orientation="Horizontal" Spacing="6">
-                                <FontIcon Glyph="&#xE840;" FontSize="13" Foreground="#FFFF453A" />
-                                <TextBlock Text="Pin" FontSize="13" />
+                        <Button x:Name="TabPinButton" Height="34" Padding="10,0" BorderThickness="0"
+                                Background="Transparent" VerticalAlignment="Center">
+                            <StackPanel Spacing="3">
+                                <StackPanel Orientation="Horizontal" Spacing="6" HorizontalAlignment="Center">
+                                    <FontIcon Glyph="&#xE840;" FontSize="13" Foreground="#FFFF453A" />
+                                    <TextBlock Text="Pin" FontSize="13" />
+                                </StackPanel>
+                                <Border x:Name="TabPinUnderline" Height="2" CornerRadius="1"
+                                        Background="{StaticResource TabUnderlineBrush}" />
                             </StackPanel>
                         </Button>
                     </StackPanel>
@@ -70,13 +87,23 @@
                                          VerticalAlignment="Center" />
                             </Grid>
                         </Border>
-                        <Button x:Name="TabAllCompact" Grid.Column="2" Width="34" Height="30"
+                        <!-- Tab thu gọn: icon + gạch chân báo active (UpdateTabVisual bật/tắt + làm mờ tab
+                             kia) để khi mở search vẫn biết rõ đang ở Clipboard hay Pin, không chỉ mỗi icon. -->
+                        <Button x:Name="TabAllCompact" Grid.Column="2" Width="40" Height="34"
                                 Margin="6,0,0,0" Background="Transparent" BorderThickness="0" Padding="0">
-                            <FontIcon Glyph="&#xE81C;" FontSize="15" />
+                            <StackPanel Spacing="3" VerticalAlignment="Center">
+                                <FontIcon Glyph="&#xE81C;" FontSize="15" HorizontalAlignment="Center" />
+                                <Border x:Name="TabAllCompactUnderline" Width="20" Height="2" CornerRadius="1"
+                                        Background="{StaticResource TabUnderlineBrush}" />
+                            </StackPanel>
                         </Button>
-                        <Button x:Name="TabPinCompact" Grid.Column="3" Width="34" Height="30"
+                        <Button x:Name="TabPinCompact" Grid.Column="3" Width="40" Height="34"
                                 Background="Transparent" BorderThickness="0" Padding="0">
-                            <FontIcon Glyph="&#xE840;" FontSize="15" Foreground="#FFFF453A" />
+                            <StackPanel Spacing="3" VerticalAlignment="Center">
+                                <FontIcon Glyph="&#xE840;" FontSize="15" Foreground="#FFFF453A" HorizontalAlignment="Center" />
+                                <Border x:Name="TabPinCompactUnderline" Width="20" Height="2" CornerRadius="1"
+                                        Background="{StaticResource TabUnderlineBrush}" />
+                            </StackPanel>
                         </Button>
                     </Grid>
 
@@ -108,6 +135,11 @@
                                 <ItemsStackPanel Orientation="Horizontal"/>
                             </ItemsPanelTemplate>
                         </ListView.ItemsPanel>
+                        <!-- Tắt animation thêm/xoá/đổi-chỗ mặc định: khi đổi tab thêm nhiều item cùng lúc,
+                             transition so le làm item hiện ra "chậm dần" (cảm giác lag). Rỗng = hiện tức thì. -->
+                        <ListView.ItemContainerTransitions>
+                            <TransitionCollection />
+                        </ListView.ItemContainerTransitions>
                         <ListView.ItemContainerStyle>
                             <Style TargetType="ListViewItem">
                                 <Setter Property="Margin" Value="5"/>

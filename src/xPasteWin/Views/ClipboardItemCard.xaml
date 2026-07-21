@@ -14,7 +14,7 @@
                 <Grid.RowDefinitions>
                     <RowDefinition Height="58" />
                     <RowDefinition Height="*" />
-                    <RowDefinition Height="30" />
+                    <RowDefinition Height="{Binding FooterRowHeight}" />
                 </Grid.RowDefinitions>
 
                 <!-- Header: nền accent (màu trích từ icon app nguồn), tiêu đề + thời gian + icon app -->
@@ -23,7 +23,13 @@
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
-                    <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="2">
+                    <!-- CacheMode=BitmapCache: rasterize chữ vào surface trung gian → WinUI vẽ chữ
+                         bằng grayscale NGAY khung đầu, bỏ pha ClearType "đậm" ban đầu (dưới ScaleTransform
+                         của ContentHost). Nhờ vậy LẦN ĐẦU mở panel không còn nháy đậm→thanh. Đặt lên
+                         StackPanel chữ (KHÔNG bọc cả header) để tránh IconShadowHost — nơi gắn Composition
+                         drop-shadow của icon, thứ có thể sai lệch nếu bị bitmap-cache. -->
+                    <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="2"
+                                CacheMode="BitmapCache">
                         <TextBlock Text="{Binding Title}" FontSize="15" FontWeight="Bold"
                                    Foreground="White" TextTrimming="CharacterEllipsis" />
                         <TextBlock Text="{Binding RelativeTime}" FontSize="10"
@@ -42,7 +48,8 @@
                 <!-- Content: text (tối đa ~7 dòng) hoặc thumbnail ảnh; pin overlay.
                      Ảnh fill bị chặn bởi MaxWidth/Height = ActualWidth/Height THỰC của vùng này nên
                      không tràn ra header/footer (không cần magic-number clip). -->
-                <Grid x:Name="ContentArea" Grid.Row="1" Background="{Binding CardContentBrush}">
+                <Grid x:Name="ContentArea" Grid.Row="1" Background="{Binding CardContentBrush}"
+                      CacheMode="BitmapCache"><!-- vẽ chữ preview/ô-màu grayscale ngay từ đầu → hết nháy đậm→thanh -->
                     <TextBlock Text="{Binding PreviewText}" Visibility="{Binding TextVisibility}"
                                Margin="12" FontSize="13" Foreground="{Binding PrimaryTextBrush}"
                                TextWrapping="Wrap" MaxLines="7" TextTrimming="CharacterEllipsis"
@@ -67,10 +74,19 @@
                 </Grid>
 
                 <!-- Footer -->
-                <Grid Grid.Row="2" Background="{Binding FooterBackground}" Padding="12,0">
-                    <TextBlock Text="{Binding FooterText}" FontSize="11" Foreground="{Binding SecondaryTextBrush}"
-                               VerticalAlignment="Center" HorizontalAlignment="{Binding FooterAlignment}"
-                               TextTrimming="CharacterEllipsis" />
+                <Grid Grid.Row="2" Background="{Binding FooterBackground}" Padding="12,0"
+                      CacheMode="BitmapCache"><!-- vẽ chữ footer grayscale ngay từ đầu → hết nháy đậm→thanh -->
+                    <!-- Card URL: dòng 1 = tiêu đề trang fetch được (FooterText), dòng 2 = URL đã copy.
+                         Card khác: chỉ dòng 1 (dòng URL ẩn) nên hiển thị như cũ. -->
+                    <StackPanel VerticalAlignment="Center" Spacing="2">
+                        <TextBlock Text="{Binding FooterText}" FontSize="{Binding FooterFontSize}" Foreground="{Binding SecondaryTextBrush}"
+                                   HorizontalAlignment="{Binding FooterAlignment}"
+                                   TextTrimming="CharacterEllipsis" />
+                        <TextBlock Text="{Binding UrlText}" Visibility="{Binding UrlLineVisibility}"
+                                   FontSize="11" Foreground="{Binding SecondaryTextBrush}" Opacity="0.7"
+                                   HorizontalAlignment="{Binding FooterAlignment}"
+                                   TextTrimming="CharacterEllipsis" />
+                    </StackPanel>
                 </Grid>
             </Grid>
         </Border>

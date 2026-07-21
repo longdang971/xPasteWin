@@ -102,29 +102,59 @@ public static class SourceAppService
         catch { return new AppVisual(); }
     }
 
-    // Trích màu trội từ icon (giống computedAccentColor của macOS): thu nhỏ về 16×16, duyệt pixel
-    // đục, chọn pixel bão hòa cao nhất (sat ≥ 0.2, brightness 0.15–0.98) → HSB(hue,0.65,0.52);
-    // nếu không có màu bão hòa → màu trung bình RGB.
+    // Trích màu CHỦ ĐẠO từ icon: thu nhỏ 32×32, duyệt pixel đục có màu (sat ≥ 0.25, brightness
+    // 0.15–0.95), dồn vào histogram 24 vùng hue với trọng số = độ rực (sat). Vùng có TỔNG trọng số
+    // lớn nhất (diện tích × độ rực) là màu chủ đạo — thay vì chọn 1 pixel rực nhất như trước (khiến
+    // icon xanh dương bị vài chi tiết nhỏ rực hơn "cướp" màu). Lấy hue trung bình vòng (circular mean)
+    // của vùng thắng + 2 vùng kề (mượt, tránh màu bị cắt đôi giữa 2 bucket) → HSB(hue,0.65,0.52).
+    // Không có pixel màu (icon xám/đơn sắc) → màu trung bình RGB.
     private static uint DominantColor(Bitmap src, out bool has)
     {
         has = false;
         try
         {
-            using var small = new Bitmap(src, new Size(16, 16));
-            double bestSat = 0.2; float bestHue = -1;
+            using var small = new Bitmap(src, new Size(32, 32));
+            const int BUCKETS = 24;
+            const double BucketWidth = 360.0 / BUCKETS;
+            var wsum = new double[BUCKETS];
+            var sinw = new double[BUCKETS];
+            var cosw = new double[BUCKETS];
             long r = 0, g = 0, b = 0, n = 0;
-            for (int y = 0; y < 16; y++)
-                for (int x = 0; x < 16; x++)
+            for (int y = 0; y < 32; y++)
+                for (int x = 0; x < 32; x++)
                 {
                     var c = small.GetPixel(x, y);
                     if (c.A < 128) continue;
                     n++; r += c.R; g += c.G; b += c.B;
                     float bright = c.GetBrightness();
-                    if (bright < 0.15f || bright > 0.98f) continue;
+                    if (bright < 0.15f || bright > 0.95f) continue;
                     float sat = c.GetSaturation();
-                    if (sat > bestSat) { bestSat = sat; bestHue = c.GetHue(); }
+                    if (sat < 0.25f) continue;
+                    float hue = c.GetHue();
+                    int bi = (int)(hue / BucketWidth) % BUCKETS;
+                    double w = sat;                       // trọng số theo độ rực → vùng màu rõ + rộng thắng
+                    double rad = hue * Math.PI / 180.0;
+                    wsum[bi] += w; sinw[bi] += Math.Sin(rad) * w; cosw[bi] += Math.Cos(rad) * w;
                 }
-            if (bestHue >= 0) { has = true; return HsbToArgb(bestHue, 0.65, 0.52); }
+
+            // Chọn bucket theo điểm đã LÀM MƯỢT (cộng nửa trọng số 2 bucket kề, vòng tròn) để một màu
+            // chủ đạo bị trải sang 2 bucket không bị thua một màu phụ gọn trong 1 bucket.
+            int best = -1; double bestScore = 0;
+            for (int i = 0; i < BUCKETS; i++)
+            {
+                double score = wsum[i] + 0.5 * (wsum[(i + BUCKETS - 1) % BUCKETS] + wsum[(i + 1) % BUCKETS]);
+                if (score > bestScore) { bestScore = score; best = i; }
+            }
+            if (best >= 0)
+            {
+                // Hue trung bình vòng của bucket thắng + 2 kề (gộp vector sin/cos đã trọng số).
+                int lo = (best + BUCKETS - 1) % BUCKETS, hi = (best + 1) % BUCKETS;
+                double s = sinw[best] + sinw[lo] + sinw[hi];
+                double co = cosw[best] + cosw[lo] + cosw[hi];
+                double meanHue = Math.Atan2(s, co) * 180.0 / Math.PI;
+                if (meanHue < 0) meanHue += 360;
+                has = true; return HsbToArgb((float)meanHue, 0.65, 0.52);
+            }
             if (n > 0) { has = true; return 0xFF000000u | (uint)((r / n) << 16) | (uint)((g / n) << 8) | (uint)(b / n); }
         }
         catch { }

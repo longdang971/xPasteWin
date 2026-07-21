@@ -251,10 +251,16 @@ public sealed partial class PanelWindow : Window
     {
         if (_vm == null) return;
         bool all = _vm.ActiveTab == ClipboardTab.All;
-        var active = ThemeService.TabActiveBrush; // phủ trắng ở dark / phủ đen ở light → luôn thấy tab chọn
-        var clear = ThemeService.TabClearBrush;
-        TabAllButton.Background = all ? active : clear;
-        TabPinButton.Background = all ? clear : active;
+        // Tab đang chọn: hiện gạch chân màu + chữ rõ; tab kia: ẩn gạch + làm mờ.
+        TabAllUnderline.Visibility = all ? Visibility.Visible : Visibility.Collapsed;
+        TabPinUnderline.Visibility = all ? Visibility.Collapsed : Visibility.Visible;
+        TabAllButton.Opacity = all ? 1.0 : 0.5;
+        TabPinButton.Opacity = all ? 0.5 : 1.0;
+        // Tab thu gọn (khi mở search): cùng chỉ báo active để biết đang ở Clipboard hay Pin.
+        TabAllCompactUnderline.Visibility = all ? Visibility.Visible : Visibility.Collapsed;
+        TabPinCompactUnderline.Visibility = all ? Visibility.Collapsed : Visibility.Visible;
+        TabAllCompact.Opacity = all ? 1.0 : 0.5;
+        TabPinCompact.Opacity = all ? 0.5 : 1.0;
     }
 
     private void OpenSearch(bool open)
@@ -722,6 +728,37 @@ public sealed partial class PanelWindow : Window
         Win32.SetWindowPos(_hwnd, Win32.HWND_TOPMOST, ox, oy, w, h, Win32.SWP_HIDEWINDOW);
         IsPanelVisible = false;
         _hooks.Uninstall();
+    }
+
+    /// <summary>
+    /// Dựng sẵn panel NGẦM ngay lúc khởi động (offscreen, KHÔNG kích hoạt): trả trước toàn bộ chi phí
+    /// "cold" của LẦN MỞ ĐẦU — tạo container ListView, chạy layout, rasterize chữ (BitmapCache). Nhờ vậy
+    /// lần đầu người dùng nhấn hotkey, panel chỉ "hiện lại" nên nhanh như các lần sau (không giật/đợi).
+    /// Caller phải gọi SAU khi VM đã có card (Refresh) để container thực sự được realize.
+    /// </summary>
+    public void Prewarm()
+    {
+        var (x, y, w, h) = TargetRect();
+        var (ox, oy) = OffscreenOrigin(x, y, w, h);
+        // Hiện OFFSCREEN (ngoài mọi màn hình) → vô hình với người dùng nhưng DWM vẫn composite, nên
+        // ListView realize container + rasterize thật. KHÔNG bật hook, KHÔNG đặt IsPanelVisible=true.
+        Win32.SetWindowPos(_hwnd, Win32.HWND_TOPMOST, ox, oy, w, h,
+            Win32.SWP_NOACTIVATE | Win32.SWP_SHOWWINDOW);
+        ApplyTheme();
+        ConfigureLayout();
+
+        // Chờ vài khung để realize + (nếu có) hai-pha chữ diễn ra XONG khi còn offscreen rồi mới ẩn hẳn.
+        int frames = 4;
+        void HideWhenWarm()
+        {
+            if (--frames > 0)
+            {
+                DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, HideWhenWarm);
+                return;
+            }
+            Win32.SetWindowPos(_hwnd, Win32.HWND_TOPMOST, ox, oy, w, h, Win32.SWP_HIDEWINDOW);
+        }
+        DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, HideWhenWarm);
     }
 
     public void ShowPanel()

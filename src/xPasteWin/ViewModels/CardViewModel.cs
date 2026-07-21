@@ -127,6 +127,19 @@ public sealed partial class CardViewModel : ObservableObject
         }
     }
 
+    /// <summary>URL người dùng đã copy (dòng phụ dưới tiêu đề trên card URL). Rỗng nếu không phải URL.</summary>
+    public string UrlText => Item.Type == ClipboardContentType.Url ? (Item.Text ?? "") : "";
+    public Visibility UrlLineVisibility =>
+        Item.Type == ClipboardContentType.Url && !string.IsNullOrEmpty(Item.Text)
+            ? Visibility.Visible : Visibility.Collapsed;
+
+    /// <summary>Card URL có footer cao hơn để chứa 2 dòng (tiêu đề + URL) chữ to, dễ nhìn.</summary>
+    public GridLength FooterRowHeight =>
+        Item.Type == ClipboardContentType.Url ? new GridLength(52) : new GridLength(30);
+
+    /// <summary>Cỡ chữ tiêu đề footer: card URL to hơn cho dễ đọc; loại khác giữ như cũ.</summary>
+    public double FooterFontSize => Item.Type == ClipboardContentType.Url ? 13 : 11;
+
     private ImageSource? _sourceIcon;
     private bool _sourceIconLoaded;
     public ImageSource? SourceAppIcon

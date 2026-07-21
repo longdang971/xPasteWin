@@ -61,6 +61,10 @@ public partial class App : Application
         // Panel cần được kích hoạt một lần để dựng cây visual, rồi ẩn ngay.
         _panel.Activate();
         _panel.HideImmediately();
+        // Dựng sẵn card + realize container NGẦM (offscreen) ngay lúc khởi động để LẦN MỞ ĐẦU nhanh
+        // như các lần sau — trả trước chi phí "cold" (tạo container ListView, layout, rasterize chữ).
+        _panelVm.Refresh();
+        _panel.Prewarm();
 
         // --- Clipboard capture ---
         _monitor.ItemCaptured += it => _panel.DispatcherQueue.TryEnqueue(() =>

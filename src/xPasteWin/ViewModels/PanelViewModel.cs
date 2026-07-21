@@ -73,14 +73,39 @@ public sealed partial class PanelViewModel : ObservableObject
     /// mở. Giữ container ổn định khi danh sách không đổi (trường hợp phổ biến: mở panel mà chưa copy gì
     /// mới) → hết nháy, đồng thời đỡ tốn CPU dựng lại thẻ.
     /// </summary>
+    // Cache CardViewModel theo Id để TÁI DÙNG khi đổi tab / refresh. Các getter của card rất nặng ở
+    // lần đầu (nạp icon app, decode thumbnail, SourceAppService.GetVisual, FileIconService…) rồi được
+    // cache NGAY TRONG instance. Nếu mỗi lần đổi tab lại `new CardViewModel` thì toàn bộ việc nặng đó
+    // chạy lại → item hiện ra chậm, cảm giác lag. Giữ instance sống theo vòng đời item trong store.
+    private readonly Dictionary<Guid, CardViewModel> _cardCache = new();
+
+    private CardViewModel GetOrCreateCard(ClipboardItem item)
+    {
+        if (_cardCache.TryGetValue(item.Id, out var vm)) return vm;
+        vm = new CardViewModel(item, _store);
+        _cardCache[item.Id] = vm;
+        return vm;
+    }
+
     private void SyncCards(IReadOnlyList<ClipboardItem> desired)
     {
+        // 0) Dọn cache cho item đã bị XOÁ khỏi store (tránh phình bộ nhớ). KHÔNG dọn theo `desired`:
+        //    item bị lọc khỏi tab hiện tại (vd đang ở tab Pin) vẫn còn trong store và cần giữ cache
+        //    để lần đổi tab quay lại hiện ra tức thì.
+        if (_cardCache.Count > 0)
+        {
+            var live = _store.Items.Select(i => i.Id).ToHashSet();
+            foreach (var id in _cardCache.Keys.Where(k => !live.Contains(k)).ToList())
+                _cardCache.Remove(id);
+        }
+
         // 1) Bỏ card không còn trong danh sách mong muốn.
         var desiredIds = desired.Select(i => i.Id).ToHashSet();
         for (int i = Cards.Count - 1; i >= 0; i--)
             if (!desiredIds.Contains(Cards[i].Id)) Cards.RemoveAt(i);
 
-        // 2) Duyệt theo đúng thứ tự mong muốn: khớp thì giữ, có sẵn ở chỗ khác thì Move, chưa có thì Insert.
+        // 2) Duyệt theo đúng thứ tự mong muốn: khớp thì giữ, có sẵn ở chỗ khác thì Move, chưa có thì Insert
+        //    (tái dùng instance từ cache thay vì dựng mới → không chạy lại việc nặng khi đổi tab).
         for (int i = 0; i < desired.Count; i++)
         {
             var id = desired[i].Id;
@@ -91,7 +116,7 @@ public sealed partial class PanelViewModel : ObservableObject
                 if (Cards[j].Id == id) { existing = j; break; }
 
             if (existing >= 0) Cards.Move(existing, i);
-            else Cards.Insert(i, new CardViewModel(desired[i], _store));
+            else Cards.Insert(i, GetOrCreateCard(desired[i]));
         }
     }
 
