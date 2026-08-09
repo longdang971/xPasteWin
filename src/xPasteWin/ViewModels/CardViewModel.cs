@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -23,6 +24,7 @@ public sealed partial class CardViewModel : ObservableObject
     private bool _thumbLoaded;
     private string? _linkTitle;
     private bool _isFavicon;
+    private bool _isLogo;
     private bool _isFileIcon;
     private readonly Microsoft.UI.Dispatching.DispatcherQueue? _dq;
 
@@ -30,6 +32,46 @@ public sealed partial class CardViewModel : ObservableObject
 
     [ObservableProperty] private bool isSelected;
     [ObservableProperty] private bool isCopied;
+    // Từ khoá đang tìm (free text) để tô nền vàng đoạn khớp trên card. PanelViewModel cập nhật khi search.
+    [ObservableProperty] private string highlightTerm = "";
+
+    // Badge phím tắt Ctrl+1..9 (hiện khi giữ Ctrl, giống ⌘N của macOS). Index = vị trí trong danh sách.
+    [ObservableProperty] private int index;
+    [ObservableProperty] private bool showBadge;
+    [ObservableProperty] private bool badgePlain; // Ctrl+Shift → dán thô (hiện thêm glyph)
+
+    partial void OnIndexChanged(int value) => RaiseBadge();
+    partial void OnShowBadgeChanged(bool value) => RaiseBadge();
+    partial void OnBadgePlainChanged(bool value) => OnPropertyChanged(nameof(BadgePlainVisibility));
+
+    private void RaiseBadge()
+    {
+        OnPropertyChanged(nameof(BadgeText));
+        OnPropertyChanged(nameof(FooterBadgeVisibility));
+        OnPropertyChanged(nameof(ColorBadgeVisibility));
+        OnPropertyChanged(nameof(ImageBadgeVisibility));
+        OnPropertyChanged(nameof(BadgePlainVisibility));
+        OnPropertyChanged(nameof(FooterContentInset));
+    }
+
+    private bool BadgeOn => ShowBadge && Index < 9; // chỉ 9 card đầu có phím tắt
+    /// <summary>Nhãn badge (1..9).</summary>
+    public string BadgeText => (Index + 1).ToString();
+
+    // 3 kiểu badge đúng như macOS: card có footer → số KHÔNG nền, màu phụ, thẳng hàng chữ "N characters";
+    // ô màu → số KHÔNG nền, màu theo độ sáng swatch (ColorTextBrush); ảnh → pill nền mờ, màu chính.
+    public Visibility FooterBadgeVisibility =>
+        BadgeOn && !IsImage && !IsColor ? Visibility.Visible : Visibility.Collapsed;
+    public Visibility ColorBadgeVisibility =>
+        BadgeOn && IsColor ? Visibility.Visible : Visibility.Collapsed;
+    public Visibility ImageBadgeVisibility =>
+        BadgeOn && IsImage ? Visibility.Visible : Visibility.Collapsed;
+    public Visibility BadgePlainVisibility =>
+        BadgeOn && BadgePlain ? Visibility.Visible : Visibility.Collapsed;
+
+    /// <summary>Chừa lề phải cho chữ footer để không đè lên badge khi giữ Ctrl (reflow như HStack của mac).</summary>
+    public Thickness FooterContentInset =>
+        FooterBadgeVisibility == Visibility.Visible ? new Thickness(0, 0, 26, 0) : new Thickness(0);
 
     public CardViewModel(ClipboardItem item, ClipboardStore store)
     {
@@ -48,6 +90,7 @@ public sealed partial class CardViewModel : ObservableObject
         {
             _linkTitle = preview.Title;
             _isFavicon = preview.IsFavicon;
+            _isLogo = preview.IsLogo;
             if (preview.ImagePath != null && File.Exists(preview.ImagePath))
             {
                 try { _thumb = new BitmapImage(new Uri(preview.ImagePath)); _thumbLoaded = true; } catch { }
@@ -61,16 +104,81 @@ public sealed partial class CardViewModel : ObservableObject
             OnPropertyChanged(nameof(ThumbAlign));
             OnPropertyChanged(nameof(ThumbVAlign));
             OnPropertyChanged(nameof(ThumbFixedSize));
+            // URL vừa có preview → bố cục footer/inset/fade/nền đổi theo.
+            OnPropertyChanged(nameof(UrlHasPreview));
+            OnPropertyChanged(nameof(UrlLineVisibility));
+            OnPropertyChanged(nameof(FooterFontSize));
+            OnPropertyChanged(nameof(FooterHeight));
+            OnPropertyChanged(nameof(FooterVisibility));
+            OnPropertyChanged(nameof(FooterBackground));
+            OnPropertyChanged(nameof(ContentInsetThickness));
+            OnPropertyChanged(nameof(FadeVisibility));
+            OnPropertyChanged(nameof(ContentBackdropBrush));
         }
         if (_dq != null) _dq.TryEnqueue(Apply); else Apply();
     }
 
-    partial void OnIsSelectedChanged(bool value) => OnPropertyChanged(nameof(SelectionBrush));
+    [ObservableProperty] private bool isHovered;
+
+    // Đổi tên NGAY trên header (inline, giống macOS): TextBox hiện thay tiêu đề khi IsRenaming.
+    [ObservableProperty] private bool isRenaming;
+    [ObservableProperty] private string renameDraft = "";
+    partial void OnIsRenamingChanged(bool value)
+    {
+        OnPropertyChanged(nameof(TitleVisibility));
+        OnPropertyChanged(nameof(RenameVisibility));
+    }
+    public Visibility TitleVisibility => IsRenaming ? Visibility.Collapsed : Visibility.Visible;
+    public Visibility RenameVisibility => IsRenaming ? Visibility.Visible : Visibility.Collapsed;
+
+    partial void OnIsSelectedChanged(bool value) => OnPropertyChanged(nameof(RingBrush));
+    partial void OnIsHoveredChanged(bool value)
+    {
+        OnPropertyChanged(nameof(RingBrush));
+        OnPropertyChanged(nameof(PinVisibility));       // ẩn chỉ báo pin tĩnh khi hover (nút hover thay thế)
+        OnPropertyChanged(nameof(HoverActionsVisibility));
+    }
 
     private static readonly Brush TransparentBrush = new SolidColorBrush(Colors.Transparent);
 
-    /// <summary>Viền: màu accent khi được chọn (giống macOS), trong suốt khi không.</summary>
-    public Brush SelectionBrush => IsSelected ? AccentBrush : TransparentBrush;
+    /// <summary>Viền: xanh accent khi được chọn HOẶC đang hover (giống macOS), trong suốt khi không.</summary>
+    public Brush RingBrush =>
+        IsSelected || IsHovered ? ThemeService.SelectionRingBrush : TransparentBrush;
+
+    // --- Nút hover nổi (pin + xoá) ở góc trên phải, hiện khi hover (giống CardHoverActions của mac) ---
+    public Visibility HoverActionsVisibility => IsHovered ? Visibility.Visible : Visibility.Collapsed;
+
+    /// <summary>Callback do PanelViewModel gán để pin/xoá đi qua store + refresh danh sách.</summary>
+    public Action? OnTogglePin;
+    public Action? OnDelete;
+
+    public string PinButtonGlyph => Item.IsPinned ? "" : ""; // Unpin / Pin
+    public string PinButtonTooltip => Item.IsPinned ? "Unpin" : "Pin";
+    // Pin: đỏ khi CHƯA ghim (màu báo trạng thái, đọc trên nền sáng/tối); đã ghim → tint theo nền.
+    public Brush PinButtonBrush =>
+        Item.IsPinned ? HoverIconBrush : new SolidColorBrush(Color.FromArgb(0xFF, 0xFF, 0x45, 0x3A));
+
+    /// <summary>Màu icon nút hover (trash + unpin) — tương phản với nền thực của card.</summary>
+    public Brush HoverIconBrush
+    {
+        get
+        {
+            var c = SurfaceColor;
+            double lum = (0.2126 * c.R + 0.7152 * c.G + 0.0722 * c.B) / 255.0;
+            return new SolidColorBrush(lum < 0.5
+                ? Color.FromArgb(0xF0, 0xFF, 0xFF, 0xFF)
+                : Color.FromArgb(0xF0, 0x1C, 0x1C, 0x1E));
+        }
+    }
+
+    /// <summary>Cập nhật hiển thị nút/chỉ báo pin sau khi đổi trạng thái ghim.</summary>
+    public void RaisePinState()
+    {
+        OnPropertyChanged(nameof(PinVisibility));
+        OnPropertyChanged(nameof(PinButtonGlyph));
+        OnPropertyChanged(nameof(PinButtonTooltip));
+        OnPropertyChanged(nameof(PinButtonBrush));
+    }
 
     public Guid Id => Item.Id;
 
@@ -79,6 +187,8 @@ public sealed partial class CardViewModel : ObservableObject
     {
         get
         {
+            // Tên do người dùng đặt (rename) thắng mọi tiêu đề suy ra — điểm mấu chốt của "snippet".
+            if (!string.IsNullOrEmpty(Item.Label)) return Item.Label!;
             if (DetectedColor() != null) return "Color";
             if (DetectedFilePath() is { } fp) return Directory.Exists(fp) ? "Folder" : "File";
             return Item.Type switch
@@ -104,7 +214,7 @@ public sealed partial class CardViewModel : ObservableObject
 
     // Màu accent header: trích từ màu chủ đạo của ICON app nguồn (giống macOS); nếu không có icon
     // thì fallback theo loại nội dung.
-    public Brush AccentBrush
+    private Color AccentColor
     {
         get
         {
@@ -112,10 +222,9 @@ public sealed partial class CardViewModel : ObservableObject
             if (v is { HasAccent: true })
             {
                 var a = v.AccentArgb;
-                return new SolidColorBrush(Color.FromArgb(
-                    (byte)(a >> 24), (byte)(a >> 16), (byte)(a >> 8), (byte)a));
+                return Color.FromArgb((byte)(a >> 24), (byte)(a >> 16), (byte)(a >> 8), (byte)a);
             }
-            return new SolidColorBrush(Item.Type switch
+            return Item.Type switch
             {
                 ClipboardContentType.Text => Color.FromArgb(255, 0, 122, 255),
                 ClipboardContentType.Url => Color.FromArgb(255, 26, 153, 77),
@@ -123,22 +232,245 @@ public sealed partial class CardViewModel : ObservableObject
                 ClipboardContentType.File => Color.FromArgb(255, 255, 149, 0),
                 ClipboardContentType.Folder => Color.FromArgb(255, 0, 122, 255),
                 _ => Color.FromArgb(255, 0, 122, 255),
-            });
+            };
         }
     }
+
+    public Brush AccentBrush => new SolidColorBrush(AccentColor);
+
+    /// <summary>Header nhạt cần chữ tối. Ngưỡng 0.62 cao hơn mốc 0.5 giữa: chữ trắng vẫn đọc tốt trên
+    /// các màu thương hiệu bão hoà (xanh Mail/Xcode) có luminance nhỉnh qua 0.5 (giống macOS isPaleColor).</summary>
+    private bool IsPaleAccent
+    {
+        get
+        {
+            var c = AccentColor;
+            double lum = (0.2126 * c.R + 0.7152 * c.G + 0.0722 * c.B) / 255.0;
+            return lum > 0.62;
+        }
+    }
+
+    /// <summary>Màu tiêu đề trên header: đen 78% nếu nền nhạt, trắng nếu nền đậm (macOS onAccent).</summary>
+    public Brush OnAccentBrush => IsPaleAccent
+        ? new SolidColorBrush(Color.FromArgb(0xC7, 0, 0, 0))
+        : new SolidColorBrush(Color.FromArgb(0xFF, 0xFF, 0xFF, 0xFF));
+
+    /// <summary>Màu dòng phụ (thời gian) trên header = onAccent × 0.75 độ mờ.</summary>
+    public Brush OnAccentSecondaryBrush => IsPaleAccent
+        ? new SolidColorBrush(Color.FromArgb(0x95, 0, 0, 0))
+        : new SolidColorBrush(Color.FromArgb(0xBF, 0xFF, 0xFF, 0xFF));
 
     /// <summary>URL người dùng đã copy (dòng phụ dưới tiêu đề trên card URL). Rỗng nếu không phải URL.</summary>
     public string UrlText => Item.Type == ClipboardContentType.Url ? (Item.Text ?? "") : "";
     public Visibility UrlLineVisibility =>
-        Item.Type == ClipboardContentType.Url && !string.IsNullOrEmpty(Item.Text)
+        Item.Type == ClipboardContentType.Url && UrlHasPreview && !string.IsNullOrEmpty(Item.Text)
             ? Visibility.Visible : Visibility.Collapsed;
 
-    /// <summary>Card URL có footer cao hơn để chứa 2 dòng (tiêu đề + URL) chữ to, dễ nhìn.</summary>
-    public GridLength FooterRowHeight =>
-        Item.Type == ClipboardContentType.Url ? new GridLength(52) : new GridLength(30);
+    /// <summary>Cỡ chữ tiêu đề footer: card URL (có preview) to hơn cho dễ đọc; loại khác 12.</summary>
+    public double FooterFontSize => UrlHasPreview ? 13 : 12;
 
-    /// <summary>Cỡ chữ tiêu đề footer: card URL to hơn cho dễ đọc; loại khác giữ như cũ.</summary>
-    public double FooterFontSize => Item.Type == ClipboardContentType.Url ? 13 : 11;
+    // ---------- Bố cục nội dung/footer (port từ ClipboardItemCard.swift của macOS) ----------
+    private bool IsImage => Item.Type == ClipboardContentType.Image;
+    private bool IsUrl => Item.Type == ClipboardContentType.Url;
+
+    /// <summary>Card URL đã có preview (og:image hoặc favicon) → footer 52 hiện tiêu đề + URL, ảnh fill.</summary>
+    private bool UrlHasPreview { get { _ = Thumbnail; return IsUrl && _thumb != null; } }
+
+    /// <summary>Text/URL chảy XUỐNG DƯỚI footer với gradient mờ (text tan vào footer) — chỉ text thuần
+    /// hoặc URL chưa có preview. Ảnh/ô màu/file icon KHÔNG chảy (trông như lỗi layout).</summary>
+    private bool ContentFlowsUnderFooter =>
+        (Item.Type == ClipboardContentType.Text && !IsColor && DetectedFilePath() == null) ||
+        (IsUrl && !UrlHasPreview);
+
+    /// <summary>Chiều cao strip footer: URL có preview = 52 (2 dòng), còn lại = 30.</summary>
+    public double FooterHeight => UrlHasPreview ? 52 : 30;
+
+    /// <summary>Chừa đáy vùng nội dung để nội dung "căn giữa" (file icon/favicon/ảnh link) dừng TRÊN footer;
+    /// text-chảy-dưới, ảnh, ô màu thì fill hết (inset 0).</summary>
+    public Thickness ContentInsetThickness =>
+        new(0, 0, 0, ContentFlowsUnderFooter || IsImage || IsColor ? 0 : FooterHeight);
+
+    /// <summary>Ảnh và ô màu tràn tới đáy → KHÔNG có strip footer (mac dùng pill nổi / swatch full).</summary>
+    public Visibility FooterVisibility =>
+        IsImage || IsColor ? Visibility.Collapsed : Visibility.Visible;
+
+    /// <summary>Gradient mờ chỉ hiện với text chảy dưới footer.</summary>
+    public Visibility FadeVisibility =>
+        ContentFlowsUnderFooter ? Visibility.Visible : Visibility.Collapsed;
+
+    /// <summary>Nền footer: text-chảy-dưới trong suốt (để lộ gradient); còn lại nền card đục.</summary>
+    public Brush FooterBackground =>
+        ContentFlowsUnderFooter ? TransparentBrush : ThemeService.CardContentBrush;
+
+    /// <summary>Gradient từ trong suốt → màu BỀ MẶT card (trên→dưới) để text tan dần vào footer.</summary>
+    public Brush BottomFadeBrush
+    {
+        get
+        {
+            var c = SurfaceColor;
+            var g = new LinearGradientBrush { StartPoint = new(0, 0), EndPoint = new(0, 1) };
+            g.GradientStops.Add(new GradientStop { Color = Color.FromArgb(0, c.R, c.G, c.B), Offset = 0 });
+            g.GradientStops.Add(new GradientStop { Color = c, Offset = 1 });
+            return g;
+        }
+    }
+
+    // ---------- Rich preview (render RTF: nền/màu/font/link) — port RichTextRenderer của macOS ----------
+    private RichPreviewService.RichInfo? _rich;
+    private bool _richChecked;
+    private RichPreviewService.RichInfo? Rich()
+    {
+        if (!_richChecked) { _richChecked = true; _rich = RichPreviewService.Analyze(Item); }
+        return _rich;
+    }
+
+    /// <summary>Card này render rich (RTF/HTML) thay cho text thường: text/URL chảy-dưới có rich hợp lệ.</summary>
+    public bool HasRichPreview => ContentFlowsUnderFooter && Rich() != null;
+    public Visibility RtfVisibility =>
+        HasRichPreview && Rich()!.Kind == RichPreviewService.RichKind.Rtf ? Visibility.Visible : Visibility.Collapsed;
+    public Visibility HtmlVisibility =>
+        HasRichPreview && Rich()!.Kind == RichPreviewService.RichKind.Html ? Visibility.Visible : Visibility.Collapsed;
+    /// <summary>Chuỗi RTF để code-behind nạp vào RichEditBox (chỉ khi Kind==Rtf).</summary>
+    public string? RtfContent => RtfVisibility == Visibility.Visible ? Rich()!.Rtf : null;
+    /// <summary>Danh sách span HTML để code-behind dựng Inline cho RichTextBlock (chỉ khi Kind==Html).</summary>
+    public IReadOnlyList<HtmlSpan>? HtmlSpans => HtmlVisibility == Visibility.Visible ? Rich()!.Html : null;
+
+    /// <summary>Màu chữ mặc định cho run HTML không khai màu — tương phản với nền thực.</summary>
+    public Brush RichDefaultTextBrush
+    {
+        get
+        {
+            var c = SurfaceColor;
+            double lum = (0.2126 * c.R + 0.7152 * c.G + 0.0722 * c.B) / 255.0;
+            return new SolidColorBrush(lum < 0.5
+                ? Color.FromArgb(0xFF, 0xFF, 0xFF, 0xFF)
+                : Color.FromArgb(0xFF, 0x1C, 0x1C, 0x1E));
+        }
+    }
+
+    /// <summary>Màu nền trích từ RTF (vd nền đen Terminal); null = giữ nền card mặc định.</summary>
+    private Color? RichFill
+    {
+        get
+        {
+            if (!HasRichPreview) return null;
+            var a = Rich()!.FillArgb;
+            return a is { } v ? Color.FromArgb((byte)(v >> 24), (byte)(v >> 16), (byte)(v >> 8), (byte)v) : null;
+        }
+    }
+
+    private Color SurfaceColor => RichFill ?? ((SolidColorBrush)ThemeService.CardContentBrush).Color;
+
+    /// <summary>Nền bề mặt card (vùng nội dung): màu RTF nếu có, không thì nền card theo theme.</summary>
+    public Brush CardSurfaceBrush =>
+        RichFill is { } c ? new SolidColorBrush(c) : ThemeService.CardContentBrush;
+
+    /// <summary>
+    /// Nền capsule chứa hai nút pin/xoá nổi trên card.
+    ///
+    /// KHÔNG dùng PillBrush (màu cố định #2C2C2E tối / #FFFFFF sáng) như trước: ở theme sáng nền card
+    /// cũng là #FFFFFF nên capsule trùng khít nền, chỉ còn cái viền mờ để nhìn ra. Ở đây lấy chính nền
+    /// card (kể cả nền RTF của card rich) rồi đẩy đi một nấc — nền tối thì sáng lên, nền sáng thì tối
+    /// đi — nên capsule luôn tách khỏi thứ nằm dưới nó dù card mang màu gì.
+    /// </summary>
+    public Brush HoverActionsBrush
+    {
+        get
+        {
+            var c = SurfaceColor;
+            return new SolidColorBrush(IsDarkSurface(c) ? Mix(c, 0xFF, 0.16) : Mix(c, 0x00, 0.08));
+        }
+    }
+
+    /// <summary>Viền capsule — cùng hướng tương phản với nền capsule, đẩy mạnh hơn một chút để mép
+    /// capsule không tan vào ảnh khi nó nổi trên card ảnh.</summary>
+    public Brush HoverActionsStrokeBrush
+    {
+        get
+        {
+            var c = SurfaceColor;
+            return new SolidColorBrush(IsDarkSurface(c) ? Mix(c, 0xFF, 0.30) : Mix(c, 0x00, 0.16));
+        }
+    }
+
+    private static bool IsDarkSurface(Color c) =>
+        (0.2126 * c.R + 0.7152 * c.G + 0.0722 * c.B) / 255.0 < 0.5;
+
+    /// <summary>Pha màu <paramref name="c"/> về phía <paramref name="toward"/> (0x00 đen / 0xFF trắng)
+    /// theo tỉ lệ <paramref name="amount"/>. Giữ nguyên alpha đục.</summary>
+    private static Color Mix(Color c, byte toward, double amount)
+    {
+        byte M(byte v) => (byte)Math.Round(v + (toward - v) * amount);
+        return Color.FromArgb(0xFF, M(c.R), M(c.G), M(c.B));
+    }
+
+    /// <summary>Màu chữ footer/badge: card thường giữ màu phụ theo theme; card rich (có nền RTF) đổi
+    /// sáng/tối theo nền thực để luôn đọc được (giống footerTextColor(on:) của mac).</summary>
+    public Brush FooterTextBrush
+    {
+        get
+        {
+            if (RichFill is not { } c) return ThemeService.SecondaryTextBrush;
+            double lum = (0.2126 * c.R + 0.7152 * c.G + 0.0722 * c.B) / 255.0;
+            return new SolidColorBrush(lum < 0.5
+                ? Color.FromArgb(0xB3, 0xFF, 0xFF, 0xFF)
+                : Color.FromArgb(0xB3, 0x00, 0x00, 0x00));
+        }
+    }
+
+    /// <summary>Nền sau nội dung căn giữa: ảnh → ô cờ (alpha checkerboard); link-favicon → nền mờ; còn lại trong suốt.</summary>
+    public Brush ContentBackdropBrush
+    {
+        get
+        {
+            if (IsImage)
+            {
+                var p = CheckerboardService.GetPng(ThemeService.IsDark);
+                if (p != null)
+                {
+                    try
+                    {
+                        return new ImageBrush
+                        {
+                            ImageSource = new BitmapImage(new Uri(p)),
+                            Stretch = Stretch.None,
+                            AlignmentX = AlignmentX.Left,
+                            AlignmentY = AlignmentY.Top,
+                        };
+                    }
+                    catch { }
+                }
+                return TransparentBrush;
+            }
+            _ = Thumbnail; // đảm bảo _isFavicon/_isLogo đã set
+            if (IsUrl && _thumb != null && (_isFavicon || _isLogo)) return ThemeService.CardMutedBrush;
+            return TransparentBrush;
+        }
+    }
+
+    // Kích thước pixel ảnh (pill nổi) — đọc header ảnh 1 lần, không giải mã toàn bộ.
+    private string? _pixelDim;
+    private bool _pixelChecked;
+    private void EnsurePixel()
+    {
+        if (_pixelChecked) return;
+        _pixelChecked = true;
+        if (!IsImage) return;
+        var p = _store.ImagePath(Item.Id);
+        if (p == null || !File.Exists(p)) return;
+        try
+        {
+            using var s = File.OpenRead(p);
+            using var img = System.Drawing.Image.FromStream(s, false, false);
+            _pixelDim = $"{img.Width} × {img.Height}";
+        }
+        catch { }
+    }
+
+    public string PixelDimText { get { EnsurePixel(); return _pixelDim ?? ""; } }
+    public Visibility PillVisibility =>
+        IsImage && !string.IsNullOrEmpty(PixelDimText) ? Visibility.Visible : Visibility.Collapsed;
+    public Brush PillBrush => ThemeService.PillBrush;
 
     private ImageSource? _sourceIcon;
     private bool _sourceIconLoaded;
@@ -149,13 +481,27 @@ public sealed partial class CardViewModel : ObservableObject
             if (_sourceIconLoaded) return _sourceIcon;
             _sourceIconLoaded = true;
             var p = Visual()?.IconPath;
-            if (p != null && File.Exists(p))
-            {
-                try { _sourceIcon = new BitmapImage(new Uri(p)); } catch { }
-            }
+            if (p != null && File.Exists(p)) _sourceIcon = SharedIcon(p);
             _sourceIcon ??= XPasteIcon; // không rõ app nguồn → dùng icon xPaste
             return _sourceIcon;
         }
+    }
+
+    // Icon app nguồn giờ là ảnh 256px: giải mã riêng cho từng card sẽ tốn bộ nhớ và CPU vô ích khi
+    // nhiều card cùng một app. Dùng chung một BitmapImage cho mỗi đường dẫn, và ép WIC giải mã sẵn ở
+    // 144px (36pt × 4, đủ cho cả màn 400%) — thu nhỏ bằng WIC nét hơn để GPU kéo thẳng từ 256px.
+    private static readonly Dictionary<string, ImageSource> IconCache = new(StringComparer.OrdinalIgnoreCase);
+    private static ImageSource? SharedIcon(string path)
+    {
+        if (IconCache.TryGetValue(path, out var cached)) return cached;
+        try
+        {
+            var img = new BitmapImage { DecodePixelType = DecodePixelType.Physical, DecodePixelWidth = 144 };
+            img.UriSource = new Uri(path);
+            IconCache[path] = img;
+            return img;
+        }
+        catch { return null; }
     }
 
     public Visibility SourceIconVisibility =>
@@ -206,8 +552,35 @@ public sealed partial class CardViewModel : ObservableObject
 
     public bool HasThumbnail => Thumbnail != null;
 
-    public Visibility ThumbVisibility => HasThumbnail ? Visibility.Visible : Visibility.Collapsed;
-    public Visibility TextVisibility => (HasThumbnail || IsColor) ? Visibility.Collapsed : Visibility.Visible;
+    public Visibility ThumbVisibility => HasThumbnail && !HasFileText ? Visibility.Visible : Visibility.Collapsed;
+    public Visibility TextVisibility =>
+        (HasThumbnail || IsColor || HasRichPreview || HasFileText) ? Visibility.Collapsed : Visibility.Visible;
+
+    // --- Preview nội dung file text trên card (đọc ~8KB đầu; giống macOS) ---
+    private string? _fileText;
+    private bool _fileTextChecked;
+    public string? FileTextPreview
+    {
+        get
+        {
+            if (_fileTextChecked) return _fileText;
+            _fileTextChecked = true;
+            var p = TextFilePath();
+            if (p != null) _fileText = TextFileReader.ReadHead(p, TextFileReader.CardHeadBytes)?.TrimEnd();
+            return _fileText;
+        }
+    }
+    public bool HasFileText => !string.IsNullOrEmpty(FileTextPreview);
+    public Visibility FileTextVisibility => HasFileText ? Visibility.Visible : Visibility.Collapsed;
+
+    /// <summary>Đường dẫn file văn bản của item (file đơn hoặc text là đường dẫn); null nếu không phải file text.</summary>
+    private string? TextFilePath()
+    {
+        string? p = Item.Type == ClipboardContentType.File && Item.FilePaths is { Length: 1 } ? Item.FilePaths[0]
+                  : Item.Type == ClipboardContentType.Text ? DetectedFilePath() : null;
+        if (p != null && !Directory.Exists(p) && TextFileReader.IsTextFile(p)) return p;
+        return null;
+    }
     public Visibility PinVisibility => Item.IsPinned ? Visibility.Visible : Visibility.Collapsed;
 
     // --- Ô màu (#hex/rgb/hsl) ---
@@ -235,22 +608,22 @@ public sealed partial class CardViewModel : ObservableObject
     // Đọc _ = Thumbnail trước để _isFavicon/_isFileIcon được set (thứ tự bind không đảm bảo).
     public Stretch ThumbStretch
     {
-        get { _ = Thumbnail; return (Item.Type == ClipboardContentType.Url && !_isFavicon) ? Stretch.UniformToFill : Stretch.Uniform; }
+        // Chỉ og:image LỚN (không phải favicon/logo/icon) mới phủ đầy; còn lại fit để không phóng to vỡ nét.
+        get { _ = Thumbnail; return (Item.Type == ClipboardContentType.Url && !_isFavicon && !_isLogo) ? Stretch.UniformToFill : Stretch.Uniform; }
     }
     public HorizontalAlignment ThumbAlign
     {
-        get { _ = Thumbnail; return (_isFavicon || _isFileIcon) ? HorizontalAlignment.Center : HorizontalAlignment.Stretch; }
+        get { _ = Thumbnail; return (_isFavicon || _isLogo || _isFileIcon) ? HorizontalAlignment.Center : HorizontalAlignment.Stretch; }
     }
     public VerticalAlignment ThumbVAlign
     {
-        get { _ = Thumbnail; return (_isFavicon || _isFileIcon) ? VerticalAlignment.Center : VerticalAlignment.Stretch; }
+        get { _ = Thumbnail; return (_isFavicon || _isLogo || _isFileIcon) ? VerticalAlignment.Center : VerticalAlignment.Stretch; }
     }
-    // Favicon/icon: kích thước cố định nhỏ, căn giữa. og:image/ảnh: NaN (tự co) — bị chặn bởi
-    // MaxWidth/MaxHeight = ActualWidth/ActualHeight THỰC của vùng nội dung (bind trong XAML), nên
-    // ảnh lớn KHÔNG phình card / tràn layout mà không cần hardcode kích thước.
+    // Favicon 72 / logo 120 / icon file 120: kích thước cố định, căn giữa. og:image/ảnh: NaN (tự co) — bị
+    // chặn bởi MaxWidth/MaxHeight = kích thước THỰC của vùng nội dung nên không phình card / tràn layout.
     public double ThumbFixedSize
     {
-        get { _ = Thumbnail; return _isFileIcon ? 96 : _isFavicon ? 72 : double.NaN; }
+        get { _ = Thumbnail; return _isFileIcon ? 120 : _isLogo ? 120 : _isFavicon ? 72 : double.NaN; }
     }
 
     public ImageSource? Thumbnail
@@ -395,10 +768,6 @@ public sealed partial class CardViewModel : ObservableObject
     public Brush CardContentBrush => ThemeService.CardContentBrush;
     public Brush PrimaryTextBrush => ThemeService.PrimaryTextBrush;
     public Brush SecondaryTextBrush => ThemeService.SecondaryTextBrush;
-
-    /// <summary>Nền footer: link có nền riêng; các loại khác dùng cùng nền nội dung cho liền mạch.</summary>
-    public Brush FooterBackground =>
-        Item.Type == ClipboardContentType.Url ? ThemeService.CardFooterUrlBrush : ThemeService.CardContentBrush;
 
     /// <summary>Cập nhật các thuộc tính phụ thuộc trạng thái item (gọi sau khi pin/đổi).</summary>
     public void NotifyChanged()

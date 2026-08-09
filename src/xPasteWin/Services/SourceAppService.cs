@@ -43,13 +43,19 @@ public static class SourceAppService
         Win32.GetWindowThreadProcessId(hwnd, out var pid);
         if (pid == 0) return null;
         var exe = ExePathOf(pid);
-        if (string.IsNullOrEmpty(exe)) return null;
+        return string.IsNullOrEmpty(exe) ? null : DisplayName(exe);
+    }
+
+    /// <summary>Tên hiển thị của một exe (vd "Google Chrome"): ưu tiên FileDescription, fallback tên
+    /// file. Dùng cho nhãn app ở popover filter và token filter.</summary>
+    public static string DisplayName(string exePath)
+    {
         try
         {
-            var fd = FileVersionInfo.GetVersionInfo(exe).FileDescription;
-            return !string.IsNullOrWhiteSpace(fd) ? fd : Path.GetFileNameWithoutExtension(exe);
+            var fd = FileVersionInfo.GetVersionInfo(exePath).FileDescription;
+            return !string.IsNullOrWhiteSpace(fd) ? fd : Path.GetFileNameWithoutExtension(exePath);
         }
-        catch { return Path.GetFileNameWithoutExtension(exe); }
+        catch { return Path.GetFileNameWithoutExtension(exePath); }
     }
 
     private static string? ExePathOf(uint pid)
@@ -88,11 +94,11 @@ public static class SourceAppService
         {
             if (!File.Exists(exePath)) return new AppVisual();
             Directory.CreateDirectory(CacheDir);
-            var png = Path.Combine(CacheDir, Hash(exePath) + ".png");
+            // Hậu tố "-hi": tên file khác bản cũ để cache 32px đã lưu trước đây KHÔNG bị dùng lại.
+            var png = Path.Combine(CacheDir, Hash(exePath) + "-hi.png");
 
-            using var icon = Icon.ExtractAssociatedIcon(exePath);
-            if (icon == null) return new AppVisual();
-            using var bmp = icon.ToBitmap();
+            using var bmp = ExtractLargest(exePath);
+            if (bmp == null) return new AppVisual();
             if (!File.Exists(png) || new FileInfo(png).Length == 0)
                 bmp.Save(png, ImageFormat.Png);
 
@@ -102,63 +108,132 @@ public static class SourceAppService
         catch { return new AppVisual(); }
     }
 
-    // Trích màu CHỦ ĐẠO từ icon: thu nhỏ 32×32, duyệt pixel đục có màu (sat ≥ 0.25, brightness
-    // 0.15–0.95), dồn vào histogram 24 vùng hue với trọng số = độ rực (sat). Vùng có TỔNG trọng số
-    // lớn nhất (diện tích × độ rực) là màu chủ đạo — thay vì chọn 1 pixel rực nhất như trước (khiến
-    // icon xanh dương bị vài chi tiết nhỏ rực hơn "cướp" màu). Lấy hue trung bình vòng (circular mean)
-    // của vùng thắng + 2 vùng kề (mượt, tránh màu bị cắt đôi giữa 2 bucket) → HSB(hue,0.65,0.52).
-    // Không có pixel màu (icon xám/đơn sắc) → màu trung bình RGB.
+    /// <summary>
+    /// Lấy BẢN LỚN NHẤT trong nhóm icon của exe. Icon.ExtractAssociatedIcon chỉ trả bản 32×32 (cỡ
+    /// "small" của shell): đưa lên ô 36×36 là đã phóng to, còn ở 150% DPI thì 32px phải kéo lên 54px
+    /// thật → nhoè, răng cưa. PrivateExtractIcons cho phép chỉ định cỡ mong muốn nên lấy được bản
+    /// 256×256 mà hầu hết app hiện đại đều nhúng. Thử nhỏ dần cho app chỉ có icon cỡ bé.
+    /// </summary>
+    private static Bitmap? ExtractLargest(string exePath)
+    {
+        foreach (int size in new[] { 256, 128, 64, 48, 32 })
+        {
+            var handles = new IntPtr[1];
+            var ids = new uint[1];
+            uint n;
+            try { n = PrivateExtractIcons(exePath, 0, size, size, handles, ids, 1, 0); }
+            catch { break; }
+            if (n == 0 || handles[0] == IntPtr.Zero) continue;
+            try
+            {
+                using var icon = Icon.FromHandle(handles[0]);
+                return icon.ToBitmap();
+            }
+            catch { }
+            finally { DestroyIcon(handles[0]); }
+        }
+        try
+        {
+            using var fallback = Icon.ExtractAssociatedIcon(exePath);
+            return fallback?.ToBitmap();
+        }
+        catch { return null; }
+    }
+
+    // Trích màu THƯƠNG HIỆU từ icon — port đúng extractDominantColor của macOS.
+    //
+    // Chọn 1 pixel rực nhất KHÔNG hiệu quả: nó bỏ qua việc một màu phủ BAO NHIÊU icon, nên Chrome
+    // ra màu xanh lá của viền vòng (mảng nhỏ, rực nhất) thay vì đĩa xanh dương ai cũng nhận ra.
+    // Icon đặt "dấu ấn" ở GIỮA, chi tiết phụ ở RÌA — nên hue được dồn vào histogram với trọng số
+    // theo KHOẢNG CÁCH TỚI TÂM (Gaussian σ=0.35) nhân độ rực (sat): xanh Chrome chỉ 9.5% diện tích
+    // thô nhưng 61% ở phần ba trung tâm.
+    //
+    // Khác bản cũ (ép mọi header về HSB(hue,0.65,0.52) → cùng một tông): GIỮ hue+sat+bri thật của
+    // app, chỉ kẹp đủ để chữ tiêu đề còn đọc được (sat≤0.85, bri∈[0.32,0.92]). Pixel xám (sat<0.18)
+    // gom riêng: icon đen/trắng thuần (Terminal) không bị ép theo hue rò rỉ từ khử răng cưa.
+    private const int DomSize = 32;
     private static uint DominantColor(Bitmap src, out bool has)
     {
         has = false;
         try
         {
-            using var small = new Bitmap(src, new Size(32, 32));
-            const int BUCKETS = 24;
-            const double BucketWidth = 360.0 / BUCKETS;
-            var wsum = new double[BUCKETS];
-            var sinw = new double[BUCKETS];
-            var cosw = new double[BUCKETS];
-            long r = 0, g = 0, b = 0, n = 0;
-            for (int y = 0; y < 32; y++)
-                for (int x = 0; x < 32; x++)
+            using var small = new Bitmap(src, new Size(DomSize, DomSize));
+            const int bucketCount = 24;
+            var bucketWeight = new double[bucketCount];
+            var bucketR = new double[bucketCount];
+            var bucketG = new double[bucketCount];
+            var bucketB = new double[bucketCount];
+            // Xám tách riêng: icon toàn đen/trắng không có hue để thắng, không được ép theo hue.
+            double greyWeight = 0, greyR = 0, greyG = 0, greyB = 0;
+
+            const double sigma = 0.35;
+            for (int y = 0; y < DomSize; y++)
+                for (int x = 0; x < DomSize; x++)
                 {
                     var c = small.GetPixel(x, y);
-                    if (c.A < 128) continue;
-                    n++; r += c.R; g += c.G; b += c.B;
-                    float bright = c.GetBrightness();
-                    if (bright < 0.15f || bright > 0.95f) continue;
-                    float sat = c.GetSaturation();
-                    if (sat < 0.25f) continue;
-                    float hue = c.GetHue();
-                    int bi = (int)(hue / BucketWidth) % BUCKETS;
-                    double w = sat;                       // trọng số theo độ rực → vùng màu rõ + rộng thắng
-                    double rad = hue * Math.PI / 180.0;
-                    wsum[bi] += w; sinw[bi] += Math.Sin(rad) * w; cosw[bi] += Math.Cos(rad) * w;
+                    if (c.A < 128) continue;                       // alpha > 0.5
+                    double r = c.R / 255.0, g = c.G / 255.0, b = c.B / 255.0;
+                    RgbToHsv(r, g, b, out double h, out double s, out _);
+
+                    double dx = (x + 0.5) / DomSize - 0.5;
+                    double dy = (y + 0.5) / DomSize - 0.5;
+                    double dist = Math.Sqrt(dx * dx + dy * dy) / 0.5;
+                    double centre = Math.Exp(-(dist * dist) / (2 * sigma * sigma));
+
+                    if (s < 0.18)
+                    {
+                        greyWeight += centre; greyR += r * centre; greyG += g * centre; greyB += b * centre;
+                        continue;
+                    }
+                    // Trọng số nhân thêm độ rực để mảng nhạt phía sau dấu ấn không lấn át được nó.
+                    double w = centre * s;
+                    int i = Math.Min(bucketCount - 1, (int)(h / 360.0 * bucketCount));
+                    bucketWeight[i] += w; bucketR[i] += r * w; bucketG[i] += g * w; bucketB[i] += b * w;
                 }
 
-            // Chọn bucket theo điểm đã LÀM MƯỢT (cộng nửa trọng số 2 bucket kề, vòng tròn) để một màu
-            // chủ đạo bị trải sang 2 bucket không bị thua một màu phụ gọn trong 1 bucket.
-            int best = -1; double bestScore = 0;
-            for (int i = 0; i < BUCKETS; i++)
+            int best = -1; double bestWeight = 0;
+            for (int i = 0; i < bucketCount; i++)
+                if (bucketWeight[i] > bestWeight) { bestWeight = bucketWeight[i]; best = i; }
+
+            double rr, gg, bb;
+            if (best >= 0 && bestWeight > greyWeight * 0.25)
             {
-                double score = wsum[i] + 0.5 * (wsum[(i + BUCKETS - 1) % BUCKETS] + wsum[(i + 1) % BUCKETS]);
-                if (score > bestScore) { bestScore = score; best = i; }
+                rr = bucketR[best] / bestWeight; gg = bucketG[best] / bestWeight; bb = bucketB[best] / bestWeight;
             }
-            if (best >= 0)
+            else if (greyWeight > 0)
             {
-                // Hue trung bình vòng của bucket thắng + 2 kề (gộp vector sin/cos đã trọng số).
-                int lo = (best + BUCKETS - 1) % BUCKETS, hi = (best + 1) % BUCKETS;
-                double s = sinw[best] + sinw[lo] + sinw[hi];
-                double co = cosw[best] + cosw[lo] + cosw[hi];
-                double meanHue = Math.Atan2(s, co) * 180.0 / Math.PI;
-                if (meanHue < 0) meanHue += 360;
-                has = true; return HsbToArgb((float)meanHue, 0.65, 0.52);
+                rr = greyR / greyWeight; gg = greyG / greyWeight; bb = greyB / greyWeight;
             }
-            if (n > 0) { has = true; return 0xFF000000u | (uint)((r / n) << 16) | (uint)((g / n) << 8) | (uint)(b / n); }
+            else return 0xFF007AFF;
+
+            // Giữ hue/sat/bri của app; chỉ kẹp để tiêu đề còn đọc được (không ép về một tông tối).
+            RgbToHsv(rr, gg, bb, out double hh, out double ss, out double vv);
+            ss = Math.Min(ss, 0.85);
+            vv = Math.Min(Math.Max(vv, 0.32), 0.92);
+            has = true;
+            return HsbToArgb((float)hh, ss, vv);
         }
         catch { }
         return 0xFF007AFF;
+    }
+
+    /// <summary>RGB (0..1) → HSV: hue 0..360, sat/val 0..1. Dùng HSV (brightness = max kênh) đúng như
+    /// NSColor.getHue của macOS — KHÁC System.Drawing.GetBrightness/GetSaturation (vốn là HSL).</summary>
+    private static void RgbToHsv(double r, double g, double b, out double h, out double s, out double v)
+    {
+        double max = Math.Max(r, Math.Max(g, b));
+        double min = Math.Min(r, Math.Min(g, b));
+        double d = max - min;
+        v = max;
+        s = max <= 0 ? 0 : d / max;
+        if (d <= 0) { h = 0; return; }
+        double hh;
+        if (max == r) hh = ((g - b) / d) % 6;
+        else if (max == g) hh = (b - r) / d + 2;
+        else hh = (r - g) / d + 4;
+        hh *= 60;
+        if (hh < 0) hh += 360;
+        h = hh;
     }
 
     private static uint HsbToArgb(float hue, double sat, double bri)
@@ -192,4 +267,9 @@ public static class SourceAppService
     private static extern bool QueryFullProcessImageName(IntPtr h, uint flags, StringBuilder buf, ref uint size);
     [DllImport("kernel32.dll")]
     private static extern bool CloseHandle(IntPtr h);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern uint PrivateExtractIcons(string file, int index, int cx, int cy,
+        IntPtr[] phicon, uint[] piconid, uint nIcons, uint flags);
+    [DllImport("user32.dll")]
+    private static extern bool DestroyIcon(IntPtr hIcon);
 }

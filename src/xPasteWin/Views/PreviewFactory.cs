@@ -32,36 +32,43 @@ internal static class PreviewFactory
         var item = card.Item;
         bool isUrl = item.Type == ClipboardContentType.Url;
 
-        var root = new Grid
-        {
-            Width = isUrl ? 560 : 420,
-            Height = isUrl ? 440 : 340,
-            Background = PanelBg,
-        };
+        // Nền trong suốt để lộ kính acrylic ở header/footer/mép; vùng nội dung có nền riêng để dễ đọc.
+        var root = new Grid { Background = new SolidColorBrush(Colors.Transparent) };
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
-        // Header: nút đóng + tiêu đề loại
-        var header = new Grid { Padding = new Thickness(10, 8, 12, 8) };
-        var hStack = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, VerticalAlignment = VerticalAlignment.Center };
-        var close = new Button
-        {
-            Content = new TextBlock { Text = "✕", FontSize = 14 },
-            Background = new SolidColorBrush(Colors.Transparent),
-            BorderThickness = new Thickness(0),
-            Padding = new Thickness(4),
-        };
+        // Header: nút đóng tròn (trái) · tiêu đề loại · nút copy (phải)
+        var header = new Grid { Padding = new Thickness(10, 8, 10, 8) };
+        header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        var close = IconButton("", 12); // ChromeClose
+        ToolTipService.SetToolTip(close, "Close");
         close.Click += (_, _) => onClose();
-        hStack.Children.Add(close);
-        hStack.Children.Add(new TextBlock { Text = TypeTitle(item), FontSize = 13, FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center });
-        header.Children.Add(hStack);
+        Grid.SetColumn(close, 0);
+        header.Children.Add(close);
+
+        var titleBlock = new TextBlock
+        {
+            Text = TypeTitle(item), FontSize = 13, FontWeight = FontWeights.SemiBold,
+            VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 0, 0),
+        };
+        Grid.SetColumn(titleBlock, 1);
+        header.Children.Add(titleBlock);
+
+        var copy = IconButton("", 14); // Copy
+        ToolTipService.SetToolTip(copy, "Copy");
+        copy.Click += (_, _) => vm.Copy(item);
+        Grid.SetColumn(copy, 2);
+        header.Children.Add(copy);
+
         Grid.SetRow(header, 0);
         root.Children.Add(header);
 
-        var topDiv = new Border { Height = 1, Background = Divider };
+        var topDiv = new Border { Height = 1, Background = Divider, VerticalAlignment = VerticalAlignment.Bottom };
         Grid.SetRow(topDiv, 0);
-        topDiv.VerticalAlignment = VerticalAlignment.Bottom;
         root.Children.Add(topDiv);
 
         // Nội dung
@@ -107,13 +114,37 @@ internal static class PreviewFactory
         Grid.SetRow(footer, 2);
         root.Children.Add(footer);
 
-        var botDiv = new Border { Height = 1, Background = Divider };
+        var botDiv = new Border { Height = 1, Background = Divider, VerticalAlignment = VerticalAlignment.Top };
         Grid.SetRow(botDiv, 2);
-        botDiv.VerticalAlignment = VerticalAlignment.Top;
         root.Children.Add(botDiv);
 
-        return root;
+        // Bọc trong Border bo góc 14 + viền mảnh (khớp bo góc cửa sổ) — trông như popover macOS.
+        // Nền trong suốt để kính acrylic của cửa sổ hiện xuyên qua.
+        return new Border
+        {
+            Width = isUrl ? 560 : 420,
+            Height = isUrl ? 440 : 340,
+            CornerRadius = new CornerRadius(14),
+            Background = new SolidColorBrush(Colors.Transparent),
+            BorderThickness = new Thickness(1),
+            BorderBrush = ThemeService.SettingsCardStroke,
+            // Neo lên trên: dải "mỏ" ở đáy cửa sổ để trống → kính hiện qua thành mũi tên chỉ xuống.
+            VerticalAlignment = VerticalAlignment.Top,
+            HorizontalAlignment = HorizontalAlignment.Left,
+            Child = root,
+        };
     }
+
+    /// <summary>Nút icon nhỏ (đóng/copy) — nền trong suốt, bo góc, đổi nền khi hover (mặc định của Button).</summary>
+    private static Button IconButton(string glyph, double size) => new Button
+    {
+        Content = new FontIcon { Glyph = glyph, FontSize = size, Foreground = Secondary },
+        Background = new SolidColorBrush(Colors.Transparent),
+        BorderThickness = new Thickness(0),
+        Padding = new Thickness(7, 5, 7, 5),
+        CornerRadius = new CornerRadius(7),
+        VerticalAlignment = VerticalAlignment.Center,
+    };
 
     private static FrameworkElement BuildContent(ClipboardItem item, CardViewModel card, PanelViewModel vm, ref WebView2? webView)
     {
@@ -145,12 +176,32 @@ internal static class PreviewFactory
 
             case ClipboardContentType.File:
             case ClipboardContentType.Folder:
+                // File text đơn → hiện NỘI DUNG (monospace, ~256KB), chọn được — giống macOS.
+                if (item.Type == ClipboardContentType.File && item.FilePaths is { Length: 1 }
+                    && TextFileReader.IsTextFile(item.FilePaths[0]))
+                {
+                    var content = TextFileReader.ReadHead(item.FilePaths[0], TextFileReader.PreviewHeadBytes);
+                    if (!string.IsNullOrEmpty(content))
+                        return new ScrollViewer
+                        {
+                            Background = ContentBg,
+                            Content = new TextBlock
+                            {
+                                Text = content, FontFamily = new FontFamily("Consolas"), FontSize = 12,
+                                Foreground = ThemeService.PrimaryTextBrush, IsTextSelectionEnabled = true,
+                                TextWrapping = TextWrapping.NoWrap, Margin = new Thickness(14),
+                            },
+                        };
+                }
                 var list = new StackPanel { Margin = new Thickness(14), Spacing = 8 };
                 foreach (var p in item.FilePaths ?? Array.Empty<string>())
                     list.Children.Add(FileRow(p));
                 return new ScrollViewer { Background = ContentBg, Content = list };
 
             default: // Text
+                // Có RTF/HTML → render giữ nguyên nền/màu/font/link giống card (vd Terminal nền đen).
+                var rich = RichPreviewService.Analyze(item);
+                if (rich != null) return BuildRichPreview(rich);
                 return new ScrollViewer
                 {
                     Background = ContentBg,
@@ -164,6 +215,45 @@ internal static class PreviewFactory
                     }
                 };
         }
+    }
+
+    /// <summary>Nội dung preview rich (toàn bộ, cuộn được): RTF → RichEditBox; HTML → RichTextBlock.</summary>
+    private static FrameworkElement BuildRichPreview(RichPreviewService.RichInfo rich)
+    {
+        Color? fill = rich.FillArgb is { } a ? RichContentBuilder.ToColor(a) : null;
+        Brush bg = fill is { } c ? new SolidColorBrush(c) : ContentBg;
+
+        if (rich.Kind == RichPreviewService.RichKind.Rtf)
+        {
+            var box = new RichEditBox
+            {
+                IsReadOnly = true,
+                Background = new SolidColorBrush(Colors.Transparent),
+                BorderThickness = new Thickness(0),
+                Padding = new Thickness(14),
+                IsSpellCheckEnabled = false,
+                TextWrapping = TextWrapping.Wrap,
+            };
+            RichContentBuilder.ApplyRtf(box, rich.Rtf);
+            return new Grid { Background = bg, Children = { box } };
+        }
+
+        var rtb = new RichTextBlock
+        {
+            TextWrapping = TextWrapping.Wrap,
+            Margin = new Thickness(14),
+            IsTextSelectionEnabled = true,
+        };
+        RichContentBuilder.PopulateHtml(rtb, rich.Html, DefaultFg(fill));
+        return new ScrollViewer { Background = bg, Content = rtb };
+    }
+
+    /// <summary>Màu chữ mặc định cho HTML run không khai màu — tương phản với nền preview.</summary>
+    private static Brush DefaultFg(Color? fill)
+    {
+        if (fill is not { } c) return ThemeService.PrimaryTextBrush;
+        double lum = (0.2126 * c.R + 0.7152 * c.G + 0.0722 * c.B) / 255.0;
+        return new SolidColorBrush(lum < 0.5 ? Colors.White : Color.FromArgb(0xFF, 0x1C, 0x1C, 0x1E));
     }
 
     private static FrameworkElement FileRow(string path)

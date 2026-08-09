@@ -105,6 +105,23 @@ public static class ThemeService
 
     public static Brush CardContentBrush => B(CardContent);
     public static Brush CardFooterUrlBrush => B(CardFooterUrl);
+    // Nền mờ sau favicon (card link không có ảnh) — giống mac textBackground + primary 8%.
+    public static Brush CardMutedBrush => B(Pick(C(0xFF, 0x2A, 0x2A, 0x2C), C(0xFF, 0xF0, 0xF0, 0xF0)));
+    // Nền pill nổi (kích thước ảnh) + capsule nút hover — ĐỤC (không trong mờ).
+    public static Brush PillBrush => B(Pick(C(0xFF, 0x2C, 0x2C, 0x2E), C(0xFF, 0xFF, 0xFF, 0xFF)));
+    // Màu nhấn HỆ THỐNG của Windows (Hybrid: khung mac + accent native). Fallback xanh nếu đọc lỗi.
+    public static Color AccentColor
+    {
+        get { try { return Ui.GetColorValue(UIColorType.Accent); } catch { return C(0xFF, 0x0A, 0x84, 0xFF); } }
+    }
+    public static Brush AccentBrush => B(AccentColor);
+
+    // Viền chọn/hover — dùng system accent (đọc được cả trên card nhạt).
+    public static Brush SelectionRingBrush => AccentBrush;
+
+    // Highlight kết quả tìm kiếm: sáng → vàng đặc chữ đen; tối → vàng mờ giữ chữ nguyên (như mac).
+    public static Color SearchHighlightBg => Pick(C(0x55, 0xFF, 0xE1, 0x4D), C(0xFF, 0xFA, 0xEE, 0x6B));
+    public static bool SearchHighlightDarkText => !IsDark;
     public static Brush PrimaryTextBrush => B(PrimaryText);
     public static Brush SecondaryTextBrush => B(SecondaryText);
     public static Brush FaintTextBrush => B(FaintText);
@@ -113,6 +130,16 @@ public static class ThemeService
     // Toolbar / search (panel)
     public static Brush TabActiveBrush => B(Pick(C(0x40, 0xFF, 0xFF, 0xFF), C(0x22, 0x00, 0x00, 0x00)));
     public static Brush TabClearBrush => B(C(0x00, 0x00, 0x00, 0x00));
+    // Segmented control 2 tab: track mờ + segment đang chọn tô xanh accent (đồng bộ với Settings/selection).
+    public static Brush SegmentTrackBrush => B(Pick(C(0x1A, 0xFF, 0xFF, 0xFF), C(0x12, 0x00, 0x00, 0x00)));
+    public static Brush SegmentActiveBrush => AccentBrush;               // system accent
+    public static Brush SegmentActiveTextBrush => B(C(0xFF, 0xFF, 0xFF, 0xFF));
+    // Popover filter + token filter — port Color.primary.opacity(x) của macOS: "primary" là màu chữ
+    // nên trên nền tối là trắng, nền sáng là đen.
+    public static Brush FilterChipBrush => B(Pick(C(0x14, 0xFF, 0xFF, 0xFF), C(0x14, 0, 0, 0)));        // 8%
+    public static Brush FilterChipHoverBrush => B(Pick(C(0x24, 0xFF, 0xFF, 0xFF), C(0x24, 0, 0, 0)));   // 14%
+    public static Brush FilterTokenBrush => B(Pick(C(0x24, 0xFF, 0xFF, 0xFF), C(0x24, 0, 0, 0)));       // 14%
+    public static Brush FilterTokenHoverBrush => B(Pick(C(0x38, 0xFF, 0xFF, 0xFF), C(0x38, 0, 0, 0)));  // 22%
     public static Color ToolbarIcon => Pick(C(0xFF, 0xCC, 0xCC, 0xCC), C(0xFF, 0x3C, 0x3C, 0x43));
     public static Color SearchFieldBg => Pick(C(0x66, 0x20, 0x20, 0x24), C(0x80, 0xE5, 0xE5, 0xEA));
     public static Brush ToolbarIconBrush => B(ToolbarIcon);
@@ -134,6 +161,7 @@ public static class ThemeService
 
     // Acrylic panel backdrop
     public static Color AcrylicTint => Pick(C(0xFF, 0x14, 0x14, 0x16), C(0xFF, 0xF2, 0xF2, 0xF4));
-    public static float AcrylicTintOpacity => IsDark ? 0.75f : 0.6f;
-    public static float AcrylicLuminosityOpacity => IsDark ? 0.9f : 0.85f;
+    // Trong hơn để hình nền/desktop hiện xuyên qua như kính macOS (trước đây khá đục 0.75/0.9).
+    public static float AcrylicTintOpacity => IsDark ? 0.45f : 0.4f;
+    public static float AcrylicLuminosityOpacity => IsDark ? 0.7f : 0.7f;
 }

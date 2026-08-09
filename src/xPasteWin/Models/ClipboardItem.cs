@@ -23,6 +23,8 @@ public class ClipboardItem
     [JsonPropertyName("sourceApp")] public string? SourceApp { get; set; }
     [JsonPropertyName("richData")] public byte[]? RichData { get; set; }
     [JsonPropertyName("richType")] public string? RichType { get; set; }
+    // Chữ nhận diện được trong ảnh (OCR) — để tìm kiếm ảnh theo nội dung. Rỗng = chưa quét / không có.
+    [JsonPropertyName("ocrText")] public string? OcrText { get; set; }
 
     // KHÔNG serialize: ảnh lưu ra file .jpg riêng, chỉ giữ trong RAM.
     [JsonIgnore] public byte[]? ImageData { get; set; }

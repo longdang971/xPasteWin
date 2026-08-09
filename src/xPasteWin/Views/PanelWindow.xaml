@@ -4,14 +4,8 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:views="using:xPasteWin.Views">
     <Grid x:Name="RootGrid" Background="Transparent">
-        <Grid.Resources>
-            <!-- Gạch chân báo tab đang chọn (dùng chung cho tab thường + tab thu gọn lúc search). -->
-            <LinearGradientBrush x:Key="TabUnderlineBrush" StartPoint="0,0" EndPoint="1,0">
-                <GradientStop Color="#7C4DFF" Offset="0" />
-                <GradientStop Color="#E24DFF" Offset="1" />
-            </LinearGradientBrush>
-        </Grid.Resources>
-        <Border x:Name="PanelBorder" CornerRadius="0" BorderThickness="0" Background="Transparent">
+        <!-- Bo góc nội dung (cards) khớp với window region cắt nền acrylic. -->
+        <Border x:Name="PanelBorder" CornerRadius="20" BorderThickness="0" Background="Transparent">
 
             <Grid x:Name="ContentHost" HorizontalAlignment="Left" VerticalAlignment="Top">
                 <Grid.RenderTransform>
@@ -33,30 +27,32 @@
                                 ToolTipService.ToolTip="Search">
                             <FontIcon Glyph="&#xE721;" FontSize="15" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                         </Button>
-                        <!-- Tab kiểu chữ + gạch chân màu dưới tab đang chọn (UpdateTabVisual bật/tắt
-                             underline + làm mờ tab không chọn) thay cho kiểu nền pill trước đây. -->
-                        <Button x:Name="TabAllButton" Height="34" Padding="10,0" BorderThickness="0"
-                                Background="Transparent" VerticalAlignment="Center">
-                            <StackPanel Spacing="3">
-                                <StackPanel Orientation="Horizontal" Spacing="6" HorizontalAlignment="Center">
-                                    <FontIcon Glyph="&#xE81C;" FontSize="13" />
-                                    <TextBlock Text="Clipboard History" FontSize="13" />
+                        <!-- Segmented control: 2 tab trong 1 track bo tròn; tab đang chọn tô xanh accent,
+                             chữ trắng — nhất quán với mục chọn ở Settings. Màu set trong UpdateTabVisual. -->
+                        <Border x:Name="TabTrack" CornerRadius="9" Padding="2" VerticalAlignment="Center">
+                            <!-- Segment CO THEO NỘI DUNG; "thumb" xanh vừa TRƯỢT vừa CO GIÃN bề rộng theo
+                                 tab đang chọn (mượt như gạt công tắc). -->
+                            <Grid>
+                                <Border x:Name="TabThumb" CornerRadius="7" HorizontalAlignment="Left"
+                                        VerticalAlignment="Stretch" Width="0">
+                                    <Border.RenderTransform><TranslateTransform x:Name="TabThumbT" /></Border.RenderTransform>
+                                </Border>
+                                <StackPanel x:Name="TabRow" Orientation="Horizontal" Spacing="4">
+                                    <Border x:Name="TabAllButton" CornerRadius="7" Padding="14,6" Background="Transparent">
+                                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                            <FontIcon x:Name="TabAllIcon" Glyph="&#xE81C;" FontSize="13" />
+                                            <TextBlock x:Name="TabAllText" Text="Clipboard History" FontSize="13" FontWeight="SemiBold" />
+                                        </StackPanel>
+                                    </Border>
+                                    <Border x:Name="TabPinButton" CornerRadius="7" Padding="14,6" Background="Transparent">
+                                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                            <FontIcon x:Name="TabPinIcon" Glyph="&#xE840;" FontSize="13" />
+                                            <TextBlock x:Name="TabPinText" Text="Pin" FontSize="13" FontWeight="SemiBold" />
+                                        </StackPanel>
+                                    </Border>
                                 </StackPanel>
-                                <Border x:Name="TabAllUnderline" Height="2" CornerRadius="1"
-                                        Background="{StaticResource TabUnderlineBrush}" />
-                            </StackPanel>
-                        </Button>
-                        <Button x:Name="TabPinButton" Height="34" Padding="10,0" BorderThickness="0"
-                                Background="Transparent" VerticalAlignment="Center">
-                            <StackPanel Spacing="3">
-                                <StackPanel Orientation="Horizontal" Spacing="6" HorizontalAlignment="Center">
-                                    <FontIcon Glyph="&#xE840;" FontSize="13" Foreground="#FFFF453A" />
-                                    <TextBlock Text="Pin" FontSize="13" />
-                                </StackPanel>
-                                <Border x:Name="TabPinUnderline" Height="2" CornerRadius="1"
-                                        Background="{StaticResource TabUnderlineBrush}" />
-                            </StackPanel>
-                        </Button>
+                            </Grid>
+                        </Border>
                     </StackPanel>
 
                     <!-- Search: ô nhập bo tròn + 2 tab compact -->
@@ -71,40 +67,83 @@
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
-                        <Border Grid.Column="1" CornerRadius="15" Background="{ThemeResource ControlFillColorDefaultBrush}"
-                                BorderThickness="2" BorderBrush="#FF3B82F6" Padding="10,0" Height="30">
+                        <!-- Ô search đồng bộ với segmented tab: bo 9, nền track mờ (theo theme), viền xanh
+                             accent khi focus; TextBox trong suốt mọi trạng thái (không "cap" xám), chữ theo theme. -->
+                        <Border x:Name="SearchFieldBorder" Grid.Column="1" CornerRadius="9"
+                                BorderThickness="1.5" Padding="10,0" Height="30">
                             <Grid>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
                                     <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
-                                <FontIcon Grid.Column="0" Glyph="&#xE721;" FontSize="13"
+                                <FontIcon Grid.Column="0" Glyph="&#xE721;" FontSize="13" Margin="0"
                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" />
-                                <TextBox x:Name="SearchBox" Grid.Column="1" Margin="8,0,0,0"
+                                <!-- Token của các filter đang bật, nằm TRONG ô search (giữa kính lúp và
+                                     chỗ gõ) — danh sách bị thu hẹp luôn tự nói vì sao nó hẹp. -->
+                                <StackPanel x:Name="FilterTokenRow" Grid.Column="1" Orientation="Horizontal"
+                                            Spacing="5" Margin="7,0,0,0" VerticalAlignment="Center" />
+                                <!-- Padding="0": bỏ padding mặc định của TextBox (TextControlThemePadding) — nếu để
+                                     nguyên, chữ bị đẩy sang phải ~10px làm icon kính lúp trông lệch hẳn về bên trái.
+                                     MinHeight="0": mặc định TextControlThemeMinHeight = 32 > 30 của ô, phần thừa dồn
+                                     xuống dưới nên chữ bị đẩy lên cao hơn icon. Bỏ đi → ô cao đúng 1 dòng chữ và
+                                     VerticalAlignment=Center canh chuẩn giữa, ngang hàng icon kính lúp. -->
+                                <TextBox x:Name="SearchBox" Grid.Column="2" Margin="7,0,0,0" Padding="0" MinHeight="0"
                                          BorderThickness="0" Background="Transparent"
+                                         Foreground="{ThemeResource TextFillColorPrimaryBrush}"
                                          PlaceholderText="Search" FontSize="15"
                                          IsSpellCheckEnabled="False"
-                                         VerticalAlignment="Center" />
+                                         VerticalAlignment="Center" VerticalContentAlignment="Center">
+                                    <TextBox.Resources>
+                                        <SolidColorBrush x:Key="TextControlBackground" Color="Transparent" />
+                                        <SolidColorBrush x:Key="TextControlBackgroundPointerOver" Color="Transparent" />
+                                        <SolidColorBrush x:Key="TextControlBackgroundFocused" Color="Transparent" />
+                                        <SolidColorBrush x:Key="TextControlBackgroundDisabled" Color="Transparent" />
+                                        <SolidColorBrush x:Key="TextControlBorderBrush" Color="Transparent" />
+                                        <SolidColorBrush x:Key="TextControlBorderBrushPointerOver" Color="Transparent" />
+                                        <SolidColorBrush x:Key="TextControlBorderBrushFocused" Color="Transparent" />
+                                        <!-- Kênh màu của ContentElement (nơi caret được vẽ). Giữ instance brush
+                                             cố định ở đây, code-behind đổi .Color để cập nhật tức thì. -->
+                                        <SolidColorBrush x:Key="TextControlForeground" Color="Transparent" />
+                                        <SolidColorBrush x:Key="TextControlForegroundPointerOver" Color="Transparent" />
+                                        <SolidColorBrush x:Key="TextControlForegroundFocused" Color="Transparent" />
+                                    </TextBox.Resources>
+                                </TextBox>
+                                <!-- Nút filter ở mép phải ô search: mang một chấm khi còn filter đang bật,
+                                     để danh sách bị thu hẹp không bị nhầm là lịch sử rỗng. -->
+                                <Grid Grid.Column="3" x:Name="FilterButton" Width="24" Height="24"
+                                      Margin="4,0,0,0" VerticalAlignment="Center" Background="Transparent"
+                                      ToolTipService.ToolTip="Filter by type, app, or date">
+                                    <FontIcon x:Name="FilterIcon" Glyph="&#xE71C;" FontSize="14"
+                                              Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                    <Ellipse x:Name="FilterDot" Width="5" Height="5" Margin="0,1,1,0"
+                                             HorizontalAlignment="Right" VerticalAlignment="Top"
+                                             Visibility="Collapsed" />
+                                </Grid>
                             </Grid>
                         </Border>
-                        <!-- Tab thu gọn: icon + gạch chân báo active (UpdateTabVisual bật/tắt + làm mờ tab
-                             kia) để khi mở search vẫn biết rõ đang ở Clipboard hay Pin, không chỉ mỗi icon. -->
-                        <Button x:Name="TabAllCompact" Grid.Column="2" Width="40" Height="34"
-                                Margin="6,0,0,0" Background="Transparent" BorderThickness="0" Padding="0">
-                            <StackPanel Spacing="3" VerticalAlignment="Center">
-                                <FontIcon Glyph="&#xE81C;" FontSize="15" HorizontalAlignment="Center" />
-                                <Border x:Name="TabAllCompactUnderline" Width="20" Height="2" CornerRadius="1"
-                                        Background="{StaticResource TabUnderlineBrush}" />
-                            </StackPanel>
-                        </Button>
-                        <Button x:Name="TabPinCompact" Grid.Column="3" Width="40" Height="34"
-                                Background="Transparent" BorderThickness="0" Padding="0">
-                            <StackPanel Spacing="3" VerticalAlignment="Center">
-                                <FontIcon Glyph="&#xE840;" FontSize="15" Foreground="#FFFF453A" HorizontalAlignment="Center" />
-                                <Border x:Name="TabPinCompactUnderline" Width="20" Height="2" CornerRadius="1"
-                                        Background="{StaticResource TabUnderlineBrush}" />
-                            </StackPanel>
-                        </Button>
+                        <!-- Tab thu gọn (khi mở search): segmented icon-only + thumb trượt mượt. -->
+                        <Border x:Name="TabTrackCompact" Grid.Column="2" CornerRadius="8" Padding="2"
+                                Margin="6,0,0,0" VerticalAlignment="Center">
+                            <Grid x:Name="TabCompactGrid" Height="26">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="34" />
+                                    <ColumnDefinition Width="34" />
+                                </Grid.ColumnDefinitions>
+                                <Border x:Name="TabCompactThumb" Grid.Column="0" CornerRadius="6">
+                                    <Border.RenderTransform><TranslateTransform x:Name="TabCompactThumbT" /></Border.RenderTransform>
+                                </Border>
+                                <Border x:Name="TabAllCompact" Grid.Column="0" Background="Transparent">
+                                    <FontIcon x:Name="TabAllCompactIcon" Glyph="&#xE81C;" FontSize="14"
+                                              HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                </Border>
+                                <Border x:Name="TabPinCompact" Grid.Column="1" Background="Transparent">
+                                    <FontIcon x:Name="TabPinCompactIcon" Glyph="&#xE840;" FontSize="14"
+                                              HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                </Border>
+                            </Grid>
+                        </Border>
                     </Grid>
 
                     <!-- Nút "…" (More) ở góc phải toolbar -->
@@ -125,14 +164,21 @@
                               IsTabStop="True"
                               UseSystemFocusVisuals="False"
                               Background="Transparent"
-                              Padding="16,10"
+                              Padding="9,0"
                               ScrollViewer.HorizontalScrollMode="Enabled"
                               ScrollViewer.HorizontalScrollBarVisibility="Hidden"
                               ScrollViewer.VerticalScrollMode="Disabled"
                               ScrollViewer.VerticalScrollBarVisibility="Disabled">
                         <ListView.ItemsPanel>
                             <ItemsPanelTemplate>
-                                <ItemsStackPanel Orientation="Horizontal"/>
+                                <!-- ItemsUpdatingScrollMode mặc định là KeepItemsInView: khi item được
+                                     CHÈN VÀO ĐẦU danh sách (dán xong → MoveToTop, hoặc copy cái mới),
+                                     ListView dịch offset thêm đúng một thẻ để giữ nguyên các thẻ đang
+                                     thấy — nên panel mở lại nằm ở thẻ thứ 2 và che mất thẻ vừa dán.
+                                     KeepScrollOffset giữ nguyên offset SỐ HỌC, thẻ mới chèn vào đầu thì
+                                     hiện ra ở đầu đúng như mong đợi. -->
+                                <ItemsStackPanel Orientation="Horizontal"
+                                                 ItemsUpdatingScrollMode="KeepScrollOffset"/>
                             </ItemsPanelTemplate>
                         </ListView.ItemsPanel>
                         <!-- Tắt animation thêm/xoá/đổi-chỗ mặc định: khi đổi tab thêm nhiều item cùng lúc,
@@ -142,11 +188,13 @@
                         </ListView.ItemContainerTransitions>
                         <ListView.ItemContainerStyle>
                             <Style TargetType="ListViewItem">
-                                <Setter Property="Margin" Value="5"/>
+                                <!-- Margin 9 → khoảng cách 18 giữa 2 card kề nhau (giống macOS cardSpacing). -->
+                                <Setter Property="Margin" Value="9"/>
                                 <Setter Property="Padding" Value="0"/>
                                 <Setter Property="IsTabStop" Value="False"/>
                                 <Setter Property="UseSystemFocusVisuals" Value="False"/>
-                                <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                                <Setter Property="HorizontalContentAlignment" Value="Center"/>
+                                <Setter Property="VerticalContentAlignment" Value="Center"/>
                             </Style>
                         </ListView.ItemContainerStyle>
                         <ListView.ItemTemplate>

@@ -2,91 +2,196 @@
     x:Class="xPasteWin.Views.ClipboardItemCard"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-    <!-- DataContext mỗi card là CardViewModel (do DataTemplate cấp). Thiết kế 250×240 giống macOS:
-         header màu accent + vùng preview + footer, viền accent khi chọn, chỉ báo pin góc trên phải. -->
-    <Border Width="250" Height="240" CornerRadius="14"
-            BorderThickness="2"
-            BorderBrush="{Binding SelectionBrush}">
-        <!-- CornerRadius của Border tự cắt nội dung theo góc bo (WinUI) → KHÔNG dùng RectangleGeometry
-             (góc nhọn) nữa vì nó ghi đè bo góc, làm mất border-radius khi ảnh/footer chạm mép. -->
-        <Border CornerRadius="12" Background="{Binding CardContentBrush}">
+    <!-- Card vuông 232×232 (giống macOS): header màu accent + vùng nội dung + footer. Bo góc 14,
+         viền accent 3px khi chọn. Bố cục nội dung/footer port từ ClipboardItemCard.swift:
+         - Text/URL-thuần: text CHẢY xuống dưới footer, có gradient mờ dần (tan vào footer).
+         - Image: nền ô cờ (alpha) + ảnh fit, KHÔNG strip footer, pill nổi hiện kích thước pixel.
+         - Color: swatch tràn full, hex mono ở giữa, KHÔNG footer.
+         - URL có preview: og:image fill (hoặc favicon trên nền mờ) + footer 52 (tiêu đề + URL).
+         - File/folder: icon lớn căn giữa TRÊN footer hiện đường dẫn. -->
+    <Border Width="232" Height="232" CornerRadius="14"
+            BorderThickness="3" BorderBrush="{Binding RingBrush}">
+        <Border CornerRadius="11" Background="{Binding CardSurfaceBrush}">
             <Grid>
                 <Grid.RowDefinitions>
-                    <RowDefinition Height="58" />
+                    <RowDefinition Height="48" />
                     <RowDefinition Height="*" />
-                    <RowDefinition Height="{Binding FooterRowHeight}" />
                 </Grid.RowDefinitions>
 
-                <!-- Header: nền accent (màu trích từ icon app nguồn), tiêu đề + thời gian + icon app -->
-                <Grid Grid.Row="0" Background="{Binding AccentBrush}" Padding="12,0">
+                <!-- Header: nền accent (màu trích từ icon app nguồn), tiêu đề + thời gian + icon app.
+                     Icon để TRẦN, không khung không nền: hình dáng thật của icon (tròn/vuông/dị hình)
+                     là thứ nhận ra app nhanh nhất, mọi khung bao quanh đều làm nhiễu nó. Tách icon
+                     khỏi nền cùng tông bằng một lớp bóng mềm bám đúng hình icon (SetupIconShadow). -->
+                <Grid Grid.Row="0" Background="{Binding AccentBrush}" Padding="12,0" Tag="header">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
-                    <!-- CacheMode=BitmapCache: rasterize chữ vào surface trung gian → WinUI vẽ chữ
-                         bằng grayscale NGAY khung đầu, bỏ pha ClearType "đậm" ban đầu (dưới ScaleTransform
-                         của ContentHost). Nhờ vậy LẦN ĐẦU mở panel không còn nháy đậm→thanh. Đặt lên
-                         StackPanel chữ (KHÔNG bọc cả header) để tránh IconShadowHost — nơi gắn Composition
-                         drop-shadow của icon, thứ có thể sai lệch nếu bị bitmap-cache. -->
-                    <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="2"
-                                CacheMode="BitmapCache">
-                        <TextBlock Text="{Binding Title}" FontSize="15" FontWeight="Bold"
-                                   Foreground="White" TextTrimming="CharacterEllipsis" />
+                    <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="2">
+                        <!-- Tiêu đề: TextBlock thường; khi đổi tên (double-click) hiện CHỮ + caret nhấp nháy
+                             tại chỗ (KHÔNG dùng TextBox → không có khung/nền xấu). Nhập lái qua hook. -->
+                        <Grid>
+                            <TextBlock Text="{Binding Title}" FontSize="15" FontWeight="Bold"
+                                       Foreground="{Binding OnAccentBrush}" TextTrimming="CharacterEllipsis"
+                                       Visibility="{Binding TitleVisibility}" />
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center"
+                                        Visibility="{Binding RenameVisibility}">
+                                <TextBlock Text="{Binding RenameDraft}" FontSize="15" FontWeight="Bold"
+                                           Foreground="{Binding OnAccentBrush}" TextTrimming="CharacterEllipsis" />
+                                <Border x:Name="RenameCaret" Width="2" Height="17" Margin="1,0,0,0"
+                                        Background="{Binding OnAccentBrush}" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Grid>
                         <TextBlock Text="{Binding RelativeTime}" FontSize="10"
-                                   Foreground="#BFFFFFFF" />
+                                   Foreground="{Binding OnAccentSecondaryBrush}" />
                     </StackPanel>
-                    <Grid Grid.Column="1" Width="36" Height="36" Margin="8,0,2,0"
+                    <Grid Grid.Column="1" Width="34" Height="34" Margin="8,0,0,0"
                           VerticalAlignment="Center"
                           ToolTipService.ToolTip="{Binding SourceAppName}">
-                        <!-- Bóng đổ bám theo hình icon (Composition DropShadow, dựng ở code-behind) -->
                         <Border x:Name="IconShadowHost" />
-                        <Image x:Name="AppIcon" Source="{Binding SourceAppIcon}"
-                               Visibility="{Binding SourceIconVisibility}" Stretch="Uniform" />
+                        <Image x:Name="AppIcon" Source="{Binding SourceAppIcon}" Stretch="Uniform"
+                               Visibility="{Binding SourceIconVisibility}" />
                     </Grid>
                 </Grid>
 
-                <!-- Content: text (tối đa ~7 dòng) hoặc thumbnail ảnh; pin overlay.
-                     Ảnh fill bị chặn bởi MaxWidth/Height = ActualWidth/Height THỰC của vùng này nên
-                     không tràn ra header/footer (không cần magic-number clip). -->
-                <Grid x:Name="ContentArea" Grid.Row="1" Background="{Binding CardContentBrush}"
-                      CacheMode="BitmapCache"><!-- vẽ chữ preview/ô-màu grayscale ngay từ đầu → hết nháy đậm→thanh -->
-                    <TextBlock Text="{Binding PreviewText}" Visibility="{Binding TextVisibility}"
+                <!-- Body: nội dung + fade + footer + pill + pin xếp chồng -->
+                <Grid Grid.Row="1">
+                    <!-- Nội dung căn giữa (ảnh/favicon/file icon/og:image). Margin đáy = ContentInsetThickness
+                         để dừng TRÊN footer; text-chảy-dưới/ảnh/ô-màu thì inset 0 (fill hết). -->
+                    <Grid x:Name="ContentArea" Margin="{Binding ContentInsetThickness}"
+                          CacheMode="BitmapCache">
+                        <!-- Nền sau nội dung: ô cờ (ảnh) / nền mờ (favicon) / trong suốt -->
+                        <Border Background="{Binding ContentBackdropBrush}" />
+                        <Image Source="{Binding Thumbnail}" Visibility="{Binding ThumbVisibility}"
+                               Stretch="{Binding ThumbStretch}"
+                               Width="{Binding ThumbFixedSize}" Height="{Binding ThumbFixedSize}"
+                               MaxWidth="{Binding ActualWidth, ElementName=ContentArea}"
+                               MaxHeight="{Binding ActualHeight, ElementName=ContentArea}"
+                               HorizontalAlignment="{Binding ThumbAlign}"
+                               VerticalAlignment="{Binding ThumbVAlign}" />
+                    </Grid>
+
+                    <!-- Text preview: CHẢY xuống dưới footer (tối đa 10 dòng), tan vào gradient -->
+                    <TextBlock x:Name="BodyText" Text="{Binding PreviewText}" Visibility="{Binding TextVisibility}"
                                Margin="12" FontSize="13" Foreground="{Binding PrimaryTextBrush}"
-                               TextWrapping="Wrap" MaxLines="7" TextTrimming="CharacterEllipsis"
+                               TextWrapping="Wrap" MaxLines="10" TextTrimming="CharacterEllipsis"
                                VerticalAlignment="Top" />
-                    <Image Source="{Binding Thumbnail}" Visibility="{Binding ThumbVisibility}"
-                           Stretch="{Binding ThumbStretch}"
-                           Width="{Binding ThumbFixedSize}" Height="{Binding ThumbFixedSize}"
-                           MaxWidth="{Binding ActualWidth, ElementName=ContentArea}"
-                           MaxHeight="{Binding ActualHeight, ElementName=ContentArea}"
-                           HorizontalAlignment="{Binding ThumbAlign}"
-                           VerticalAlignment="{Binding ThumbVAlign}" />
-                    <!-- Ô màu: nền là màu phát hiện, chữ mono ở giữa, màu chữ theo độ sáng -->
+
+                    <!-- Preview nội dung file text (.txt/code): monospace, phần đầu file, footer đè đường dẫn -->
+                    <TextBlock Text="{Binding FileTextPreview}" Visibility="{Binding FileTextVisibility}"
+                               Margin="12" FontFamily="Consolas" FontSize="11"
+                               Foreground="{Binding PrimaryTextBrush}" TextWrapping="NoWrap" MaxLines="12"
+                               TextTrimming="CharacterEllipsis" VerticalAlignment="Top" IsHitTestVisible="False" />
+
+                    <!-- Rich preview RTF (Terminal/Word…): giữ nguyên font/màu/nền/link. RichEditBox chỉ
+                         đọc, không nhận input; nội dung nạp ở code-behind. -->
+                    <RichEditBox x:Name="RichBox" Visibility="{Binding RtfVisibility}"
+                                 IsReadOnly="True" IsHitTestVisible="False" IsTabStop="False"
+                                 Background="Transparent" BorderThickness="0" Padding="12"
+                                 IsSpellCheckEnabled="False"
+                                 VerticalAlignment="Top"
+                                 ScrollViewer.VerticalScrollBarVisibility="Hidden"
+                                 ScrollViewer.HorizontalScrollBarVisibility="Hidden"
+                                 ScrollViewer.VerticalScrollMode="Disabled"
+                                 ScrollViewer.HorizontalScrollMode="Disabled" />
+
+                    <!-- Rich preview HTML (web/editor): dựng Inline giữ màu chữ/cỡ chữ/đậm-nghiêng/link.
+                         Inline dựng ở code-behind từ HtmlSpans. -->
+                    <RichTextBlock x:Name="HtmlBox" Visibility="{Binding HtmlVisibility}"
+                                   Margin="12" MaxLines="10" TextWrapping="Wrap"
+                                   TextTrimming="CharacterEllipsis" IsTextSelectionEnabled="False"
+                                   IsHitTestVisible="False" VerticalAlignment="Top"
+                                   CacheMode="BitmapCache" />
+
+                    <!-- Ô màu: nền màu phát hiện, hex mono giữa, tràn full (không footer) -->
                     <Border Background="{Binding ColorSwatchBrush}" Visibility="{Binding ColorVisibility}">
                         <TextBlock Text="{Binding PreviewText}" Foreground="{Binding ColorTextBrush}"
                                    FontFamily="Consolas" FontSize="14" FontWeight="Medium"
                                    HorizontalAlignment="Center" VerticalAlignment="Center"
                                    TextAlignment="Center" TextWrapping="Wrap" Margin="8" />
                     </Border>
+
+                    <!-- Gradient mờ dần dưới đáy (chỉ text chảy dưới) → text tan vào footer -->
+                    <Rectangle VerticalAlignment="Bottom" Height="70" Fill="{Binding BottomFadeBrush}"
+                               Visibility="{Binding FadeVisibility}" IsHitTestVisible="False" />
+
+                    <!-- Footer strip: ẩn với ảnh/ô-màu; trong suốt với text-chảy-dưới -->
+                    <Grid VerticalAlignment="Bottom" Height="{Binding FooterHeight}" Padding="12,0"
+                          Background="{Binding FooterBackground}" Visibility="{Binding FooterVisibility}">
+                        <StackPanel VerticalAlignment="Center" Spacing="2"
+                                    Margin="{Binding FooterContentInset}">
+                            <TextBlock x:Name="FooterTextBlock" Text="{Binding FooterText}" FontSize="{Binding FooterFontSize}"
+                                       Foreground="{Binding FooterTextBrush}"
+                                       HorizontalAlignment="{Binding FooterAlignment}"
+                                       TextTrimming="CharacterEllipsis" />
+                            <TextBlock x:Name="UrlTextBlock" Text="{Binding UrlText}" Visibility="{Binding UrlLineVisibility}"
+                                       FontSize="11" Foreground="{Binding FooterTextBrush}" Opacity="0.7"
+                                       HorizontalAlignment="{Binding FooterAlignment}"
+                                       TextTrimming="CharacterEllipsis" />
+                        </StackPanel>
+                        <!-- Badge trên footer: KHÔNG nền, cùng màu chữ "N characters", thẳng hàng dọc + 12px từ mép -->
+                        <StackPanel Orientation="Horizontal" Spacing="3" VerticalAlignment="Center"
+                                    HorizontalAlignment="Right" Visibility="{Binding FooterBadgeVisibility}">
+                            <FontIcon Glyph="&#xE8E4;" FontSize="10" Foreground="{Binding FooterTextBrush}"
+                                      Visibility="{Binding BadgePlainVisibility}" />
+                            <TextBlock Text="{Binding BadgeText}" FontSize="11"
+                                       Foreground="{Binding FooterTextBrush}" />
+                        </StackPanel>
+                    </Grid>
+
+                    <!-- Pill nổi kích thước pixel (card ảnh) -->
+                    <Border VerticalAlignment="Bottom" HorizontalAlignment="Center" Margin="0,0,0,10"
+                            CornerRadius="10" Padding="9,3" Background="{Binding PillBrush}"
+                            Visibility="{Binding PillVisibility}">
+                        <TextBlock Text="{Binding PixelDimText}" FontSize="12" FontWeight="Medium"
+                                   Foreground="{Binding PrimaryTextBrush}" />
+                    </Border>
+
+                    <!-- Chỉ báo pin góc trên phải (ẩn khi hover, nhường cho nút hover) -->
                     <FontIcon Glyph="&#xE840;" FontSize="10" Foreground="#FFFF453A"
                               HorizontalAlignment="Right" VerticalAlignment="Top" Margin="6"
                               Visibility="{Binding PinVisibility}" />
-                </Grid>
 
-                <!-- Footer -->
-                <Grid Grid.Row="2" Background="{Binding FooterBackground}" Padding="12,0"
-                      CacheMode="BitmapCache"><!-- vẽ chữ footer grayscale ngay từ đầu → hết nháy đậm→thanh -->
-                    <!-- Card URL: dòng 1 = tiêu đề trang fetch được (FooterText), dòng 2 = URL đã copy.
-                         Card khác: chỉ dòng 1 (dòng URL ẩn) nên hiển thị như cũ. -->
-                    <StackPanel VerticalAlignment="Center" Spacing="2">
-                        <TextBlock Text="{Binding FooterText}" FontSize="{Binding FooterFontSize}" Foreground="{Binding SecondaryTextBrush}"
-                                   HorizontalAlignment="{Binding FooterAlignment}"
-                                   TextTrimming="CharacterEllipsis" />
-                        <TextBlock Text="{Binding UrlText}" Visibility="{Binding UrlLineVisibility}"
-                                   FontSize="11" Foreground="{Binding SecondaryTextBrush}" Opacity="0.7"
-                                   HorizontalAlignment="{Binding FooterAlignment}"
-                                   TextTrimming="CharacterEllipsis" />
+                    <!-- Nút hover nổi: pin + xoá trong capsule mờ (giống CardHoverActions của mac) -->
+                    <Border HorizontalAlignment="Right" VerticalAlignment="Top" Margin="6"
+                            CornerRadius="11" Padding="4,3" Background="{Binding HoverActionsBrush}"
+                            BorderThickness="1" BorderBrush="{Binding HoverActionsStrokeBrush}"
+                            Visibility="{Binding HoverActionsVisibility}">
+                        <StackPanel Orientation="Horizontal" Spacing="2">
+                            <Button x:Name="PinButton" Width="24" Height="22" Padding="0"
+                                    Background="Transparent" BorderThickness="0"
+                                    ToolTipService.ToolTip="{Binding PinButtonTooltip}">
+                                <FontIcon Glyph="{Binding PinButtonGlyph}" FontSize="11"
+                                          Foreground="{Binding PinButtonBrush}" />
+                            </Button>
+                            <Button x:Name="DeleteButton" Width="24" Height="22" Padding="0"
+                                    Background="Transparent" BorderThickness="0"
+                                    ToolTipService.ToolTip="Delete">
+                                <FontIcon Glyph="&#xE74D;" FontSize="11" Foreground="{Binding HoverIconBrush}" />
+                            </Button>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Badge Ctrl+1..9 trên ô màu: KHÔNG nền, màu theo độ sáng swatch (giống footer, 12/9 từ mép) -->
+                    <StackPanel Orientation="Horizontal" Spacing="3" VerticalAlignment="Bottom"
+                                HorizontalAlignment="Right" Margin="0,0,12,9"
+                                Visibility="{Binding ColorBadgeVisibility}">
+                        <FontIcon Glyph="&#xE8E4;" FontSize="10" Foreground="{Binding ColorTextBrush}"
+                                  Visibility="{Binding BadgePlainVisibility}" />
+                        <TextBlock Text="{Binding BadgeText}" FontSize="11" Foreground="{Binding ColorTextBrush}" />
                     </StackPanel>
+
+                    <!-- Badge Ctrl+1..9 trên ảnh: pill nền mờ (ảnh không có footer để đặt badge) -->
+                    <Border VerticalAlignment="Bottom" HorizontalAlignment="Right" Margin="0,0,10,9"
+                            CornerRadius="9" Padding="7,2" Background="{Binding PillBrush}"
+                            Visibility="{Binding ImageBadgeVisibility}">
+                        <StackPanel Orientation="Horizontal" Spacing="3" VerticalAlignment="Center">
+                            <FontIcon Glyph="&#xE8E4;" FontSize="10" Foreground="{Binding PrimaryTextBrush}"
+                                      Visibility="{Binding BadgePlainVisibility}" />
+                            <TextBlock Text="{Binding BadgeText}" FontSize="11" FontWeight="Medium"
+                                       Foreground="{Binding PrimaryTextBrush}" />
+                        </StackPanel>
+                    </Border>
                 </Grid>
             </Grid>
         </Border>

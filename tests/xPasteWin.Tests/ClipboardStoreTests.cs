@@ -64,15 +64,36 @@ public class ClipboardStoreTests
         Assert.Equal("hello world", store.FilteredItems[0].Text);
     }
 
+    /// <summary>Sàn 500 của <c>MaxItems</c> áp cho CẢ tham số constructor, không riêng setting: xin một
+    /// mức trần nhỏ hơn thì bị nâng lên 500, nên chẳng có gì bị cắt.</summary>
     [Fact]
-    public void Trim_keeps_pinned_and_caps_unpinned()
+    public void Trim_ignores_a_cap_below_the_floor()
     {
         var s = new FakeSettings(); s.Set("keepHistoryIndex", 4); // Forever
         var dir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
         var store = new ClipboardStore(s, dir, maxItems: 3);
         for (int i = 0; i < 5; i++) store.Add(Text($"t{i}"));
-        Assert.Equal(3, store.Items.Count);
-        Assert.Equal("t4", store.Items[0].Text); // mới nhất còn
+        Assert.Equal(5, store.Items.Count);
+        Assert.Equal("t4", store.Items[0].Text); // mới nhất lên đầu
+    }
+
+    [Fact]
+    public void Trim_keeps_pinned_and_caps_unpinned()
+    {
+        var s = new FakeSettings();
+        s.Set("keepHistoryIndex", 4);        // Forever — để PruneExpired không xen vào
+        s.Set("maxHistoryCount", 500);       // đúng sàn: mức trần nhỏ nhất store chấp nhận
+        var dir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
+        var store = new ClipboardStore(s, dir);
+
+        store.Add(Text("pinned"));
+        store.TogglePin(store.Items.First(i => i.Text == "pinned"));
+        for (int i = 0; i < 502; i++) store.Add(Text($"t{i}"));
+
+        Assert.Equal(500, store.Items.Count(i => !i.IsPinned));   // unpinned bị cắt về đúng trần
+        Assert.Single(store.Items.Where(i => i.IsPinned));        // pin không bao giờ bị cắt
+        Assert.Equal("t501", store.Items[0].Text);                // mới nhất còn
+        Assert.DoesNotContain(store.Items, i => i.Text == "t0");  // cũ nhất bị bỏ trước
     }
 
     [Fact]

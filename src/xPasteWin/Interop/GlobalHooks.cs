@@ -13,10 +13,13 @@ public sealed class GlobalHooks : IDisposable
 {
     private const int WH_KEYBOARD_LL = 13, WH_MOUSE_LL = 14;
     private const int WM_KEYDOWN = 0x100, WM_SYSKEYDOWN = 0x104;
+    private const int WM_KEYUP = 0x101, WM_SYSKEYUP = 0x105;
     private const int WM_LBUTTONDOWN = 0x201, WM_RBUTTONDOWN = 0x204;
 
     /// <summary>Trả true để "nuốt" phím (không cho tới app đích).</summary>
     public event Func<int, bool>? KeyDown;
+    /// <summary>Nhả phím — dùng để ẩn badge số khi thả Ctrl.</summary>
+    public event Action<int>? KeyUp;
     /// <summary>Click chuột (toạ độ màn hình vật lý).</summary>
     public event Action<int, int>? MouseDown;
 
@@ -47,10 +50,17 @@ public sealed class GlobalHooks : IDisposable
 
     private IntPtr KbProc(int code, IntPtr wParam, IntPtr lParam)
     {
-        if (code >= 0 && (wParam == (IntPtr)WM_KEYDOWN || wParam == (IntPtr)WM_SYSKEYDOWN))
+        if (code >= 0)
         {
             int vk = Marshal.ReadInt32(lParam); // KBDLLHOOKSTRUCT.vkCode
-            if (KeyDown?.Invoke(vk) == true) return (IntPtr)1;
+            if (wParam == (IntPtr)WM_KEYDOWN || wParam == (IntPtr)WM_SYSKEYDOWN)
+            {
+                if (KeyDown?.Invoke(vk) == true) return (IntPtr)1;
+            }
+            else if (wParam == (IntPtr)WM_KEYUP || wParam == (IntPtr)WM_SYSKEYUP)
+            {
+                KeyUp?.Invoke(vk);
+            }
         }
         return CallNextHookEx(_kb, code, wParam, lParam);
     }

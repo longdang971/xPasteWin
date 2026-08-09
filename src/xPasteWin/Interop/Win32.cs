@@ -91,6 +91,24 @@ internal static class Win32
 
     [DllImport("user32.dll")] public static extern uint GetDpiForWindow(IntPtr hWnd);
 
+    // Bo góc cửa sổ: cắt HWND (kể cả nền acrylic) theo hình chữ nhật bo tròn. Sau SetWindowRgn hệ
+    // thống TIẾP QUẢN region → KHÔNG tự DeleteObject. Ellipse w/h = 2×bán kính góc.
+    [DllImport("gdi32.dll")]
+    public static extern IntPtr CreateRoundRectRgn(int x1, int y1, int x2, int y2, int wEllipse, int hEllipse);
+    [DllImport("user32.dll")]
+    public static extern int SetWindowRgn(IntPtr hWnd, IntPtr hRgn, bool bRedraw);
+
+    // Region callout: hợp chữ nhật bo tròn (thân) với tam giác (mỏ chỉ xuống card).
+    public const int RGN_OR = 2;
+    [DllImport("gdi32.dll")]
+    public static extern IntPtr CreatePolygonRgn(POINT[] pts, int count, int fillMode);
+    [DllImport("gdi32.dll")]
+    public static extern IntPtr CreateRectRgn(int l, int t, int r, int b);
+    [DllImport("gdi32.dll")]
+    public static extern int CombineRgn(IntPtr dst, IntPtr a, IntPtr b, int mode);
+    [DllImport("gdi32.dll")]
+    public static extern bool DeleteObject(IntPtr obj);
+
     // DPI hiệu dụng theo MÀN HÌNH (đa màn hình khác DPI) — dùng khi định vị theo monitor con trỏ.
     public const int MDT_EFFECTIVE_DPI = 0;
     [DllImport("shcore.dll")]

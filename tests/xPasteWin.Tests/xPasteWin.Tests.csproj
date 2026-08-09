@@ -1,6 +1,10 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
+    <!-- net8.0-windows…: ColorParser (SearchQuery/SearchFilters cần, để phân biệt Text với Color) trả
+         về Windows.UI.Color — một struct trong projection của Windows SDK, KHÔNG cần runtime WinUI.
+         Vì vậy test vẫn chạy headless, chỉ là phải chạy trên Windows — vốn là nền tảng duy nhất app
+         này chạy được. -->
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
     <LangVersion>latest</LangVersion>
@@ -19,6 +23,10 @@
     <Compile Include="..\..\src\xPasteWin\Models\ClipboardTab.cs" Link="src\ClipboardTab.cs" />
     <Compile Include="..\..\src\xPasteWin\Services\SettingsService.cs" Link="src\SettingsService.cs" />
     <Compile Include="..\..\src\xPasteWin\Services\ClipboardStore.cs" Link="src\ClipboardStore.cs" />
+    <Compile Include="..\..\src\xPasteWin\Services\ColorParser.cs" Link="src\ColorParser.cs" />
+    <Compile Include="..\..\src\xPasteWin\Services\SearchQuery.cs" Link="src\SearchQuery.cs" />
+    <Compile Include="..\..\src\xPasteWin\Services\SearchFilters.cs" Link="src\SearchFilters.cs" />
+    <Compile Include="..\..\src\xPasteWin\Services\FilterTokenLayout.cs" Link="src\FilterTokenLayout.cs" />
     <Compile Include="..\..\src\xPasteWin\Interop\ClipboardFormats.cs" Link="src\ClipboardFormats.cs" />
     <Compile Include="..\..\src\xPasteWin\ViewModels\SelectionModel.cs" Link="src\SelectionModel.cs" />
   </ItemGroup>

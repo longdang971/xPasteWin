@@ -19,13 +19,42 @@ public sealed class ClipboardStore
     private static readonly JsonSerializerOptions JsonOpts = new() { WriteIndented = false };
 
     private string _searchQuery = "";
+    private SearchFilter _query = SearchFilter.Parse("");
 
     public ObservableCollection<ClipboardItem> Items { get; } = new();
 
     public string SearchQuery
     {
         get => _searchQuery;
-        set => _searchQuery = value ?? "";
+        set { _searchQuery = value ?? ""; _query = SearchFilter.Parse(_searchQuery); }
+    }
+
+    /// <summary>Phần free-text (không gồm token img:/app:…) để tô nền vàng đoạn khớp trên card.</summary>
+    public string HighlightTerm => _query.FreeText;
+
+    /// <summary>Công tắc type / app / date từ popover filter, áp CHỒNG lên <see cref="SearchQuery"/>.</summary>
+    public SearchFilters Filters { get; } = new();
+
+    /// <summary>
+    /// Lọc một danh sách bất kỳ bằng popover filter + ô search. Tách riêng để tab Pinned — vốn tự dựng
+    /// danh sách của nó — được lọc y hệt. Một "now" duy nhất cho cả lượt: lấy DateTimeOffset.Now theo
+    /// từng item sẽ khiến mốc biên của khoảng ngày trượt ngay giữa danh sách.
+    /// </summary>
+    private List<ClipboardItem> Narrow(List<ClipboardItem> items)
+    {
+        if (Filters.IsEmpty && _query.IsEmpty) return items;
+        var now = DateTimeOffset.Now;
+        return items.Where(i => Filters.Matches(i, now) && _query.Matches(i)).ToList();
+    }
+
+    /// <summary>Số item unpinned tối đa — đọc từ setting (500–3000), fallback giá trị khởi tạo.</summary>
+    private int MaxItems
+    {
+        get
+        {
+            var v = _settings.Get("maxHistoryCount", _maxItems);
+            return Math.Clamp(v, 500, 3000);
+        }
     }
 
     public ClipboardStore(ISettings settings, string? storageDir = null, int maxItems = 500)
@@ -51,8 +80,7 @@ public sealed class ClipboardStore
         {
             var sorted = Items.OrderByDescending(i => i.IsPinned)
                               .ThenByDescending(i => i.Timestamp).ToList();
-            if (string.IsNullOrEmpty(_searchQuery)) return sorted;
-            return sorted.Where(Matches).ToList();
+            return Narrow(sorted);
         }
     }
 
@@ -62,18 +90,8 @@ public sealed class ClipboardStore
         if (tab == ClipboardTab.All) return FilteredItems;
         var pinned = Items.Where(i => i.IsPinned)
                           .OrderByDescending(i => i.Timestamp).ToList();
-        if (string.IsNullOrEmpty(_searchQuery)) return pinned;
-        return pinned.Where(Matches).ToList();
+        return Narrow(pinned);
     }
-
-    private bool Matches(ClipboardItem i) => i.Type switch
-    {
-        ClipboardContentType.Text or ClipboardContentType.Url =>
-            i.Text?.Contains(_searchQuery, StringComparison.OrdinalIgnoreCase) ?? false,
-        ClipboardContentType.Image =>
-            "image".StartsWith(_searchQuery, StringComparison.OrdinalIgnoreCase),
-        _ => i.DisplayText.Contains(_searchQuery, StringComparison.OrdinalIgnoreCase),
-    };
 
     public void Add(ClipboardItem item)
     {
@@ -100,6 +118,9 @@ public sealed class ClipboardStore
         ClipboardContentType.Image => a.ImageHash != null && a.ImageHash == b.ImageHash,
         _ => a.FilePaths != null && b.FilePaths != null && a.FilePaths.SequenceEqual(b.FilePaths),
     };
+
+    /// <summary>Ghi lại metadata item ra đĩa (dùng sau khi đổi tên/label).</summary>
+    public void UpdateItem(ClipboardItem item) => WriteMetadata(item);
 
     public void Delete(ClipboardItem item) => RemoveItem(item.Id);
 
@@ -156,6 +177,9 @@ public sealed class ClipboardStore
         DeleteAll(_imagesDir, "*.jpg");
     }
 
+    /// <summary>Áp lại giới hạn số item (gọi khi người dùng đổi "Maximum items stored").</summary>
+    public void ApplyLimit() => Trim();
+
     public void PruneExpired()
     {
         var idx = _settings.Get("keepHistoryIndex", 4);
@@ -170,9 +194,10 @@ public sealed class ClipboardStore
 
     private void Trim()
     {
+        var max = MaxItems;
         var unpinned = Items.Where(i => !i.IsPinned).OrderBy(i => i.Timestamp).ToList();
-        if (unpinned.Count <= _maxItems) return;
-        foreach (var it in unpinned.Take(unpinned.Count - _maxItems).ToList())
+        if (unpinned.Count <= max) return;
+        foreach (var it in unpinned.Take(unpinned.Count - max).ToList())
             RemoveItem(it.Id);
     }
 

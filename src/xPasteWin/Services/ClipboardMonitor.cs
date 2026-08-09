@@ -61,7 +61,19 @@ public sealed class ClipboardMonitor
         try
         {
             var item = await CaptureAsync();
-            if (item != null) { item.SourceApp = sourceExe; ItemCaptured?.Invoke(item); }
+            if (item == null) return;
+
+            // Never Save Matching Text: bỏ qua nội dung khớp pattern/regex người dùng đặt.
+            if (item.Text != null &&
+                ExclusionRules.ShouldExclude(item.Text, _settings.Get("excludePatterns", Array.Empty<string>())))
+                return;
+
+            // OCR ảnh → lưu chữ đọc được để tìm kiếm ảnh theo nội dung.
+            if (item.Type == ClipboardContentType.Image && _settings.Get("ocrEnabled", true))
+                item.OcrText = await OcrService.RecognizeAsync(item.ImageData);
+
+            item.SourceApp = sourceExe;
+            ItemCaptured?.Invoke(item);
         }
         catch { /* clipboard bận / định dạng lạ: bỏ qua, không crash */ }
     }
@@ -86,8 +98,8 @@ public sealed class ClipboardMonitor
         // 2) Ảnh
         if (data.Contains(StandardDataFormats.Bitmap))
         {
-            var jpeg = await ReadBitmapAsJpegAsync(data);
-            if (jpeg is { } j)
+            var img = await ReadBitmapAsync(data);
+            if (img is { } j)
                 return new ClipboardItem
                 {
                     Type = ClipboardContentType.Image,
@@ -135,17 +147,29 @@ public sealed class ClipboardMonitor
     }
 
     private const int MaxImageBytes = 1_000_000;
+    private const int MaxPngBytes = 3_000_000;
 
-    private static async Task<(byte[] bytes, uint width, uint height)?> ReadBitmapAsJpegAsync(DataPackageView data)
+    private static async Task<(byte[] bytes, uint width, uint height)?> ReadBitmapAsync(DataPackageView data)
     {
         var streamRef = await data.GetBitmapAsync();
         using var stream = await streamRef.OpenReadAsync();
         var decoder = await BitmapDecoder.CreateAsync(stream);
-        var pixels = (await decoder.GetPixelDataAsync()).DetachPixelData();
+        // Lấy pixel Bgra8 với alpha THẲNG (straight) để mã hoá PNG/JPEG đúng màu vùng trong suốt.
+        var pixelData = await decoder.GetPixelDataAsync(
+            BitmapPixelFormat.Bgra8, BitmapAlphaMode.Straight,
+            new BitmapTransform(), ExifOrientationMode.IgnoreExifOrientation, ColorManagementMode.DoNotColorManage);
+        var pixels = pixelData.DetachPixelData();
         uint w = decoder.PixelWidth, h = decoder.PixelHeight;
 
+        // Ảnh có kênh alpha (trong suốt) → PNG để GIỮ nền trong suốt (checkerboard mới có tác dụng);
+        // nếu PNG quá lớn thì đành JPEG (mất trong suốt) để không phình đĩa.
+        if (HasAlpha(pixels))
+        {
+            var png = await EncodePngAsync(pixels, w, h);
+            if (png.Length <= MaxPngBytes) return (png, w, h);
+        }
+
         // Lặp giảm chất lượng JPEG tới khi ≤1MB (giống NSImage.compressedJPEGData của macOS).
-        // Nếu ngay cả mức thấp nhất vẫn vượt (ảnh cực lớn), giữ bản NHỎ NHẤT để không mất ảnh.
         byte[]? best = null;
         foreach (var q in new[] { 0.85f, 0.6f, 0.35f, 0.1f })
         {
@@ -154,6 +178,27 @@ public sealed class ClipboardMonitor
             if (bytes.Length <= MaxImageBytes) break;
         }
         return best == null ? null : (best, w, h);
+    }
+
+    private static bool HasAlpha(byte[] bgra)
+    {
+        for (int i = 3; i < bgra.Length; i += 4)
+            if (bgra[i] < 255) return true;
+        return false;
+    }
+
+    private static async Task<byte[]> EncodePngAsync(byte[] pixels, uint w, uint h)
+    {
+        using var outStream = new InMemoryRandomAccessStream();
+        var encoder = await BitmapEncoder.CreateAsync(BitmapEncoder.PngEncoderId, outStream);
+        encoder.SetPixelData(BitmapPixelFormat.Bgra8, BitmapAlphaMode.Straight, w, h, 96, 96, pixels);
+        await encoder.FlushAsync();
+        var bytes = new byte[outStream.Size];
+        outStream.Seek(0);
+        using var reader = new DataReader(outStream);
+        await reader.LoadAsync((uint)outStream.Size);
+        reader.ReadBytes(bytes);
+        return bytes;
     }
 
     private static async Task<byte[]> EncodeJpegAsync(byte[] pixels, uint w, uint h, float quality)

@@ -34,7 +34,7 @@ public sealed partial class SettingsWindow : Window
     private static Brush DividerBg => ThemeService.SettingsDivider;
     private static Brush TextPrimary => ThemeService.PrimaryTextBrush;
     private static Brush TextSecondary => ThemeService.SecondaryTextBrush;
-    private static readonly Brush AccentBg = new SolidColorBrush(Windows.UI.Color.FromArgb(0xFF, 0x0A, 0x84, 0xFF)); // accent giữ cả 2 theme
+    private static Brush AccentBg => ThemeService.AccentBrush; // màu nhấn hệ thống Windows
     private static Brush AccentText => ThemeService.AccentText;
 
     public SettingsWindow(ISettings settings, ClipboardStore store, HotkeyService hotkey, TrayService tray, Action? quit = null)
@@ -262,8 +262,24 @@ public sealed partial class SettingsWindow : Window
         root.Children.Add(BuildKeepHistory());
 
         root.Children.Add(Section("Clipboard"));
-        root.Children.Add(Card(Row("Always paste as Plain Text",
-            "Strip formatting when pasting text items.", Toggle("alwaysPastePlainText", false))));
+        var sep = new ComboBox { MinWidth = 160 };
+        foreach (var s in new[] { "New line", "Space", "Comma" }) sep.Items.Add(s);
+        sep.SelectedIndex = _settings.Get("multiPasteSeparator", "newline") switch { "space" => 1, "comma" => 2, _ => 0 };
+        sep.SelectionChanged += (_, _) =>
+            _settings.Set("multiPasteSeparator", sep.SelectedIndex switch { 1 => "space", 2 => "comma", _ => "newline" });
+        var ocr = Toggle("ocrEnabled", true);
+        root.Children.Add(Card(
+            Row("Always paste as Plain Text", "Strip formatting when pasting text items.",
+                Toggle("alwaysPastePlainText", false)),
+            Divider(),
+            Row("Recognize text in images",
+                OcrService.Available ? "Search images by the text they contain (OCR)."
+                                     : "OCR language pack not installed on this PC.", ocr),
+            Divider(),
+            Row("Multi-item paste separator", "Joins multiple selected items pasted together.", sep)));
+
+        root.Children.Add(Section("Maximum items stored"));
+        root.Children.Add(BuildMaxItems());
 
         root.Children.Add(Section("Storage"));
         int pinned = _store.Items.Count(i => i.IsPinned);
@@ -405,6 +421,35 @@ public sealed partial class SettingsWindow : Window
         };
     }
 
+    private Border BuildMaxItems()
+    {
+        int val = Math.Clamp(_settings.Get("maxHistoryCount", 500), 500, 3000);
+        var label = new TextBlock
+        {
+            FontSize = 12, Foreground = TextSecondary, TextWrapping = TextWrapping.Wrap,
+            Margin = new Thickness(14, 0, 14, 10),
+        };
+        var slider = new Slider { Minimum = 500, Maximum = 3000, StepFrequency = 500, Value = val, Margin = new Thickness(14, 6, 14, 0) };
+        void Upd(int v) => label.Text = $"Keep up to {v} unpinned items (pinned items don't count).";
+        slider.ValueChanged += (_, _) =>
+        {
+            int v = (int)slider.Value;
+            _settings.Set("maxHistoryCount", v);
+            _store.ApplyLimit();
+            Upd(v);
+        };
+        Upd(val);
+        var col = new StackPanel();
+        col.Children.Add(slider);
+        col.Children.Add(new Border { Height = 8 });
+        col.Children.Add(label);
+        return new Border
+        {
+            Background = CardBg, BorderBrush = CardStroke, BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(8), Child = col, Padding = new Thickness(0, 6, 0, 0),
+        };
+    }
+
     private async System.Threading.Tasks.Task EraseHistoryAsync()
     {
         var dlg = new ContentDialog
@@ -447,7 +492,64 @@ public sealed partial class SettingsWindow : Window
             Margin = new Thickness(2, 0, 0, 6),
         });
         root.Children.Add(BuildIgnoreApps());
+
+        root.Children.Add(Section("Never save matching text"));
+        root.Children.Add(new TextBlock
+        {
+            Text = "Don't save copied text that matches these patterns. Wrap a pattern in /…/ for a regular expression.",
+            FontSize = 12, TextWrapping = TextWrapping.Wrap, Foreground = TextSecondary,
+            Margin = new Thickness(2, 0, 0, 6),
+        });
+        root.Children.Add(BuildExclusionPatterns());
         return root;
+    }
+
+    private Border BuildExclusionPatterns()
+    {
+        var list = new ListView { SelectionMode = ListViewSelectionMode.Single, MaxHeight = 150 };
+        void Reload() => list.ItemsSource = _settings.Get("excludePatterns", Array.Empty<string>()).ToList();
+        Reload();
+
+        var input = new TextBox { PlaceholderText = "Text or /regex/", MinWidth = 220 };
+        var add = new Button { Content = new FontIcon { Glyph = "", FontSize = 12 }, Padding = new Thickness(8), Margin = new Thickness(6, 0, 0, 0) };
+        var rem = new Button { Content = new FontIcon { Glyph = "", FontSize = 12 }, Padding = new Thickness(8), Margin = new Thickness(6, 0, 0, 0) };
+        var err = new TextBlock { FontSize = 12, Foreground = new SolidColorBrush(Windows.UI.Color.FromArgb(0xFF, 0xE0, 0x4A, 0x4A)), Margin = new Thickness(8, 0, 8, 0), Visibility = Visibility.Collapsed };
+
+        void AddPattern()
+        {
+            var p = input.Text?.Trim();
+            if (string.IsNullOrEmpty(p)) return;
+            if (!ExclusionRules.IsValid(p)) { err.Text = "Invalid pattern (bad regex)."; err.Visibility = Visibility.Visible; return; }
+            err.Visibility = Visibility.Collapsed;
+            var pats = _settings.Get("excludePatterns", Array.Empty<string>()).ToList();
+            if (!pats.Contains(p, StringComparer.OrdinalIgnoreCase)) pats.Add(p);
+            _settings.Set("excludePatterns", pats.ToArray());
+            input.Text = "";
+            Reload();
+        }
+        add.Click += (_, _) => AddPattern();
+        input.KeyDown += (_, e) => { if (e.Key == VirtualKey.Enter) { e.Handled = true; AddPattern(); } };
+        rem.Click += (_, _) =>
+        {
+            if (list.SelectedItem is not string sel) return;
+            var pats = _settings.Get("excludePatterns", Array.Empty<string>())
+                                .Where(p => !string.Equals(p, sel, StringComparison.Ordinal)).ToArray();
+            _settings.Set("excludePatterns", pats);
+            Reload();
+        };
+
+        var inputRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(8), HorizontalAlignment = HorizontalAlignment.Stretch };
+        inputRow.Children.Add(input); inputRow.Children.Add(add); inputRow.Children.Add(rem);
+
+        var col = new StackPanel();
+        col.Children.Add(list);
+        col.Children.Add(inputRow);
+        col.Children.Add(err);
+        return new Border
+        {
+            Background = CardBg, BorderBrush = CardStroke, BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(8), Child = col,
+        };
     }
 
     private Border BuildIgnoreApps()

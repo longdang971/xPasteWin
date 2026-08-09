@@ -17,6 +17,10 @@ public sealed class LinkPreview
     public string? ImagePath { get; init; }
     /// <summary>Ảnh là favicon (hiện nhỏ, căn giữa) chứ không phải og:image (phủ đầy).</summary>
     public bool IsFavicon { get; init; }
+    /// <summary>og:image nhưng NHỎ / gần vuông (logo) → hiện căn giữa vừa phải, KHÔNG phủ đầy (tránh phóng to vỡ nét).</summary>
+    public bool IsLogo { get; init; }
+    public int? ImgW { get; init; }
+    public int? ImgH { get; init; }
 }
 
 /// <summary>
@@ -78,6 +82,19 @@ public static class LinkPreviewService
             Directory.CreateDirectory(CacheDir);
             using var resp = await Http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead);
             var ct = resp.Content.Headers.ContentType?.MediaType ?? "";
+
+            // URL trỏ THẲNG tới ảnh → tải chính nó, vẽ như card ảnh (phủ đầy).
+            if (ct.StartsWith("image", StringComparison.OrdinalIgnoreCase))
+            {
+                var direct = await DownloadImageAsync(url, baseUri);
+                var (dw, dh) = ReadDims(direct);
+                return new LinkPreview
+                {
+                    Title = System.Net.WebUtility.UrlDecode(Path.GetFileName(baseUri.LocalPath)),
+                    Domain = baseUri.Host, ImagePath = direct,
+                    ImgW = dw, ImgH = dh,
+                };
+            }
             if (!ct.Contains("html")) return new LinkPreview { Domain = baseUri.Host };
             var html = await resp.Content.ReadAsStringAsync();
 
@@ -96,12 +113,15 @@ public static class LinkPreviewService
                 imagePath = await FetchFaviconAsync(url, baseUri, html);
             }
 
+            var (w, h) = imagePath != null && !isFavicon ? ReadDims(imagePath) : (null, null);
             return new LinkPreview
             {
                 Title = WebUtility(title),
                 Domain = baseUri.Host,
                 ImagePath = imagePath,
                 IsFavicon = isFavicon && imagePath != null,
+                IsLogo = !isFavicon && imagePath != null && IsLogoSized(w, h),
+                ImgW = w, ImgH = h,
             };
         }
         catch { return null; }
@@ -186,6 +206,28 @@ public static class LinkPreviewService
     {
         var m = Regex.Match(tag, attr + "\\s*=\\s*[\"']([^\"']*)[\"']", RegexOptions.IgnoreCase);
         return m.Success ? m.Groups[1].Value : null;
+    }
+
+    /// <summary>og:image nhỏ (&lt;300px) hoặc gần vuông vừa (&lt;600px) → coi là LOGO (không phủ đầy).</summary>
+    private static bool IsLogoSized(int? w, int? h)
+    {
+        if (w is not { } ww || h is not { } hh || ww <= 0 || hh <= 0) return false;
+        int max = Math.Max(ww, hh);
+        if (max < 300) return true;
+        double ratio = (double)Math.Min(ww, hh) / max;
+        return max < 600 && ratio > 0.82; // gần vuông
+    }
+
+    private static (int?, int?) ReadDims(string? path)
+    {
+        if (string.IsNullOrEmpty(path) || !File.Exists(path)) return (null, null);
+        try
+        {
+            using var s = File.OpenRead(path);
+            using var img = System.Drawing.Image.FromStream(s, false, false);
+            return (img.Width, img.Height);
+        }
+        catch { return (null, null); }
     }
 
     private static string? WebUtility(string? s) =>

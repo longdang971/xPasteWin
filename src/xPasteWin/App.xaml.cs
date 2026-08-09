@@ -1,3 +1,5 @@
+using System;
+using System.IO;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using xPasteWin.Interop;
@@ -21,7 +23,27 @@ public partial class App : Application
     private PanelViewModel _panelVm = null!;
     private PanelWindow _panel = null!;
 
-    public App() => InitializeComponent();
+    public App()
+    {
+        InitializeComponent();
+        // Ghi log + nuốt exception managed để app không "thoát đột ngột" (và có manh mối trong crash.log).
+        UnhandledException += (_, e) => { LogCrash(e.Exception); e.Handled = true; };
+        AppDomain.CurrentDomain.UnhandledException += (_, e) => LogCrash(e.ExceptionObject as Exception);
+        System.Threading.Tasks.TaskScheduler.UnobservedTaskException += (_, e) => { LogCrash(e.Exception); e.SetObserved(); };
+    }
+
+    private static void LogCrash(Exception? ex)
+    {
+        if (ex == null) return;
+        try
+        {
+            var dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "xPaste");
+            Directory.CreateDirectory(dir);
+            File.AppendAllText(Path.Combine(dir, "crash.log"),
+                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {ex}\n\n");
+        }
+        catch { }
+    }
 
     protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
@@ -70,7 +92,11 @@ public partial class App : Application
         _monitor.ItemCaptured += it => _panel.DispatcherQueue.TryEnqueue(() =>
         {
             _store.Add(it);
-            if (_panel.IsPanelVisible) _panelVm.Refresh();
+            // Đồng bộ card NGAY, kể cả khi panel đang ẩn. Trước đây chỉ đồng bộ lúc panel hiện, nên
+            // mọi thay đổi tích lại rồi đổ dồn vào Refresh() ngay TRƯỚC ShowPanel(): ListView phải
+            // chèn/dời container và layout lại đúng lúc panel đang trượt ra → giật. Làm sớm ở đây thì
+            // chi phí rơi vào lúc rảnh và ngoài màn hình (cùng cách Prewarm lúc khởi động).
+            _panelVm.Refresh();
         });
         _monitor.Start();
 
@@ -93,6 +119,9 @@ public partial class App : Application
             {
                 _store.MoveToTop(it);
                 _panelVm.ClearPendingReorder();
+                // Dán xong là item nhảy lên đầu — cú đổi chỗ nặng nhất. Áp vào danh sách card ngay
+                // lúc này (panel đã ẩn) thay vì để dành cho lần mở sau.
+                _panelVm.Refresh();
             }
         });
 
@@ -114,7 +143,17 @@ public partial class App : Application
         // top-level) thay vì Microsoft.Win32.SystemEvents: SystemEvents KHÔNG nhận được event trong
         // app WinUI 3 (thiếu message pump WinForms) nên trước đây lịch sử chưa từng được xoá.
         _panel.SystemEnding += ClearHistoryForShutdown;
+
+        // Onboarding: chỉ hiện LẦN CHẠY ĐẦU (chưa có cờ "onboarded"). Đóng cách nào cũng đánh dấu xong.
+        if (!_settings.Get("onboarded", false))
+        {
+            _onboarding = new OnboardingWindow(_settings, () => _settings.Set("onboarded", true));
+            _onboarding.Closed += (_, _) => { _settings.Set("onboarded", true); _onboarding = null; };
+            _onboarding.Activate();
+        }
     }
+
+    private OnboardingWindow? _onboarding;
 
     /// <summary>Clear-on-sleep/logout: chạy ĐỒNG BỘ trên UI thread (do PanelWindow.SystemEnding phát từ
     /// window proc). Xoá ĐĨA trước (kịp trước khi tiến trình bị kết thúc), rồi dọn ObservableCollection
