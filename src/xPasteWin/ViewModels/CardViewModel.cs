@@ -23,6 +23,7 @@ public sealed partial class CardViewModel : ObservableObject
     private ImageSource? _thumb;
     private bool _thumbLoaded;
     private string? _linkTitle;
+    private bool _linkHasPageTitle;
     private bool _isFavicon;
     private bool _isLogo;
     private bool _isFileIcon;
@@ -89,6 +90,7 @@ public sealed partial class CardViewModel : ObservableObject
         void Apply()
         {
             _linkTitle = preview.Title;
+            _linkHasPageTitle = preview.HasPageTitle;
             _isFavicon = preview.IsFavicon;
             _isLogo = preview.IsLogo;
             if (preview.ImagePath != null && File.Exists(preview.ImagePath))
@@ -108,12 +110,20 @@ public sealed partial class CardViewModel : ObservableObject
             OnPropertyChanged(nameof(UrlHasPreview));
             OnPropertyChanged(nameof(UrlLineVisibility));
             OnPropertyChanged(nameof(FooterFontSize));
+            OnPropertyChanged(nameof(FooterFontWeight));
             OnPropertyChanged(nameof(FooterHeight));
             OnPropertyChanged(nameof(FooterVisibility));
             OnPropertyChanged(nameof(FooterBackground));
             OnPropertyChanged(nameof(ContentInsetThickness));
             OnPropertyChanged(nameof(FadeVisibility));
             OnPropertyChanged(nameof(ContentBackdropBrush));
+            // Có ảnh preview thì nội dung THÔI chảy dưới footer ⇒ rich preview (nền/chữ RTF-HTML) tắt
+            // theo. Không phát các thuộc tính này thì card giữ nguyên nền rich cũ dưới ảnh mới.
+            OnPropertyChanged(nameof(RtfVisibility));
+            OnPropertyChanged(nameof(HtmlVisibility));
+            OnPropertyChanged(nameof(CardSurfaceBrush));
+            OnPropertyChanged(nameof(FooterTextBrush));
+            OnPropertyChanged(nameof(BottomFadeBrush));
         }
         if (_dq != null) _dq.TryEnqueue(Apply); else Apply();
     }
@@ -269,6 +279,13 @@ public sealed partial class CardViewModel : ObservableObject
     /// <summary>Cỡ chữ tiêu đề footer: card URL (có preview) to hơn cho dễ đọc; loại khác 12.</summary>
     public double FooterFontSize => UrlHasPreview ? 13 : 12;
 
+    /// <summary>Card URL lấy được TIÊU ĐỀ THẬT của trang → in đậm dòng đó, tách hẳn khỏi URL xám nhạt
+    /// ngay bên dưới. Tên miền suy ra (trang chặn bot / trả JSON) không phải tiêu đề nên để chữ thường.</summary>
+    public Windows.UI.Text.FontWeight FooterFontWeight =>
+        IsUrl && _linkHasPageTitle
+            ? Microsoft.UI.Text.FontWeights.Bold
+            : Microsoft.UI.Text.FontWeights.Normal;
+
     // ---------- Bố cục nội dung/footer (port từ ClipboardItemCard.swift của macOS) ----------
     private bool IsImage => Item.Type == ClipboardContentType.Image;
     private bool IsUrl => Item.Type == ClipboardContentType.Url;
@@ -360,6 +377,10 @@ public sealed partial class CardViewModel : ObservableObject
     }
 
     private Color SurfaceColor => RichFill ?? ((SolidColorBrush)ThemeService.CardContentBrush).Color;
+
+    /// <summary>Màu nền THỰC phía sau nội dung card (nền rich nếu có, không thì nền card theo theme).
+    /// Bộ dựng rich dùng nó để bỏ qua highlighter nền trùng màu — xem RichContentBuilder.AddBackground.</summary>
+    public Color RichSurfaceColor => SurfaceColor;
 
     /// <summary>Nền bề mặt card (vùng nội dung): màu RTF nếu có, không thì nền card theo theme.</summary>
     public Brush CardSurfaceBrush =>
@@ -740,7 +761,9 @@ public sealed partial class CardViewModel : ObservableObject
             switch (Item.Type)
             {
                 case ClipboardContentType.Url:
-                    return _linkTitle ?? $"{Item.Text?.Length ?? 0} characters";
+                    // Chưa lấy được gì thì vẫn hiện TÊN MIỀN — "147 characters" trên một card Link là
+                    // thông tin vô dụng, còn tên miền luôn nhận ra được ngay.
+                    return _linkTitle ?? UrlHost() ?? $"{Item.Text?.Length ?? 0} characters";
                 case ClipboardContentType.Image:
                     return $"{Math.Max(1, (Item.ImageSize ?? 0) / 1024)} KB";
                 case ClipboardContentType.Folder:
@@ -754,6 +777,16 @@ public sealed partial class CardViewModel : ObservableObject
                     return img != null ? Path.GetFileName(img) : $"{Item.Text?.Length ?? 0} characters";
             }
         }
+    }
+
+    /// <summary>Tên miền của URL đã copy (bỏ "www."); null nếu không phân tích được.</summary>
+    private string? UrlHost()
+    {
+        if (!IsUrl || string.IsNullOrWhiteSpace(Item.Text)) return null;
+        if (!Uri.TryCreate(Item.Text!.Trim(), UriKind.Absolute, out var u)) return null;
+        var h = u.Host;
+        if (string.IsNullOrEmpty(h)) return null;
+        return h.StartsWith("www.", StringComparison.OrdinalIgnoreCase) ? h[4..] : h;
     }
 
     private int FilesCount => Item.FilePaths?.Length ?? 0;

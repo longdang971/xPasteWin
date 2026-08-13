@@ -87,7 +87,8 @@ public sealed partial class ClipboardItemCard : UserControl
         // Card render HTML (vd nội dung copy từ Chrome) → tô nền per-run + từ khoá trên RichTextBlock.
         if (_vm?.HtmlSpans is { } spans)
             RichContentBuilder.HighlightHtml(HtmlBox, spans, term,
-                ThemeService.SearchHighlightBg, ThemeService.SearchHighlightDarkText);
+                ThemeService.SearchHighlightBg, ThemeService.SearchHighlightDarkText,
+                _vm.RichSurfaceColor);
     }
 
     private static void ApplyHighlight(TextBlock tb, string term)
@@ -120,7 +121,7 @@ public sealed partial class ClipboardItemCard : UserControl
 
         HtmlBox.Blocks.Clear();
         if (vm?.HtmlSpans is { } spans)
-            RichContentBuilder.PopulateHtml(HtmlBox, spans, vm.RichDefaultTextBrush);
+            RichContentBuilder.PopulateHtml(HtmlBox, spans, vm.RichDefaultTextBrush, vm.RichSurfaceColor);
     }
 
     // Surface của icon dùng làm mask bóng — nạp MỘT lần cho mỗi app. Nhiều card thường cùng một app

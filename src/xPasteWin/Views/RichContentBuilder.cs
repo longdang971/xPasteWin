@@ -29,14 +29,17 @@ internal static class RichContentBuilder
     }
 
     /// <summary>Dựng Inline HTML vào RichTextBlock. defaultFg dùng cho run không khai màu. Nền TỪNG ĐOẠN
-    /// (Run không có Background trong WinUI) được vẽ qua TextHighlighter theo range (best-effort).</summary>
-    public static void PopulateHtml(RichTextBlock target, IReadOnlyList<HtmlSpan> spans, Brush defaultFg)
+    /// (Run không có Background trong WinUI) được vẽ qua TextHighlighter theo range (best-effort).
+    /// <paramref name="surface"/> là màu nền đã tô sẵn phía sau (nền card/preview) — đoạn nào trùng màu đó
+    /// thì bỏ qua, xem <see cref="AddBackground"/>.</summary>
+    public static void PopulateHtml(RichTextBlock target, IReadOnlyList<HtmlSpan> spans, Brush defaultFg,
+                                    Color? surface = null)
     {
         target.Blocks.Clear();
         target.TextHighlighters.Clear();
         var para = new Paragraph();
         int offset = 0;
-        var bgRanges = new Dictionary<uint, List<(int start, int len)>>();
+        var bgRanges = new Dictionary<uint, List<(int start, int len, uint? fg)>>();
         foreach (var s in spans)
         {
             if (s.LineBreak) { para.Inlines.Add(new LineBreak()); offset += 1; continue; }
@@ -62,7 +65,7 @@ internal static class RichContentBuilder
             if (s.Background is { } bg && s.Text.Length > 0)
             {
                 if (!bgRanges.TryGetValue(bg, out var l)) bgRanges[bg] = l = new();
-                l.Add((offset, s.Text.Length));
+                l.Add((offset, s.Text.Length, s.Color));
             }
             offset += s.Text.Length;
         }
@@ -70,7 +73,7 @@ internal static class RichContentBuilder
 
         // Nền từng đoạn (transcript/highlight) — mỗi màu một TextHighlighter gộp các range cùng màu.
         foreach (var kv in bgRanges)
-            AddBackground(target.TextHighlighters, ToColor(kv.Key), kv.Value);
+            AddBackground(target.TextHighlighters, ToColor(kv.Key), kv.Value, surface);
     }
 
     // Struct TextRange của WinRT không project ra C# nên phải thao tác qua reflection.
@@ -94,24 +97,58 @@ internal static class RichContentBuilder
         catch { return false; }
     }
 
-    /// <summary>Thêm 1 TextHighlighter tô nền cho danh sách range.</summary>
-    private static void AddBackground(IList<TextHighlighter> highlighters, Color color, List<(int start, int len)> ranges)
+    /// <summary>
+    /// Thêm 1 TextHighlighter tô nền cho danh sách range.
+    ///
+    /// Hai cái bẫy của TextHighlighter, cả hai đều từng làm card "nền đen chữ đen":
+    ///
+    /// 1) Để trống <c>Foreground</c> KHÔNG có nghĩa là giữ màu chữ của Run — WinUI áp màu chữ mặc định
+    ///    của theme lên toàn bộ range. Đoạn copy từ editor nền tối (chữ vàng trên nền #1E1E2E) ở theme
+    ///    Sáng bị sơn lại thành chữ ĐEN trên chính nền tối đó. Nên luôn set Foreground tường minh.
+    ///
+    /// 2) Đoạn nào có nền TRÙNG với nền đã tô sẵn phía sau (<paramref name="surface"/> — nền card/preview
+    ///    vốn đã lấy đúng màu nền của nội dung gốc) thì không cần highlighter nào cả: vẽ lại y hệt màu đó
+    ///    chẳng thêm gì, mà lại kéo theo bẫy (1).
+    /// </summary>
+    private static void AddBackground(IList<TextHighlighter> highlighters, Color color,
+                                      List<(int start, int len, uint? fg)> ranges, Color? surface)
     {
         if (RangeType == null || ranges.Count == 0) return;
-        var hl = new TextHighlighter { Background = new SolidColorBrush(color) };
+        if (surface is { } s && s.R == color.R && s.G == color.G && s.B == color.B) return;
+
+        var hl = new TextHighlighter
+        {
+            Background = new SolidColorBrush(color),
+            Foreground = new SolidColorBrush(GroupForeground(ranges, color)),
+        };
         int added = 0;
-        foreach (var (start, len) in ranges)
+        foreach (var (start, len, _) in ranges)
             if (AddRange(hl, start, len)) added++;
         if (added > 0) highlighters.Add(hl);
     }
 
+    /// <summary>Màu chữ cho cả nhóm range cùng nền: giữ nguyên màu gốc nếu mọi đoạn trong nhóm khai CÙNG
+    /// một màu (trường hợp thường gặp); nếu lẫn nhiều màu thì chọn trắng/đen theo độ sáng của nền để chắc
+    /// chắn đọc được — một TextHighlighter chỉ mang được một màu chữ.</summary>
+    private static Color GroupForeground(List<(int start, int len, uint? fg)> ranges, Color bg)
+    {
+        uint? single = ranges[0].fg;
+        foreach (var (_, _, fg) in ranges)
+            if (fg != single) { single = null; break; }
+        if (single is { } c) return ToColor(c);
+
+        double lum = (0.2126 * bg.R + 0.7152 * bg.G + 0.0722 * bg.B) / 255.0;
+        return lum < 0.5 ? Color.FromArgb(0xFF, 0xFF, 0xFF, 0xFF) : Color.FromArgb(0xFF, 0x1C, 0x1C, 0x1E);
+    }
+
     /// <summary>Tô lại toàn bộ highlight cho RichTextBlock HTML: nền TỪNG ĐOẠN (từ spans) + đoạn khớp
     /// TỪ KHOÁ tìm kiếm (vàng). Toạ độ range tính theo cùng mô hình offset khi dựng inline (LineBreak = 1).</summary>
-    public static void HighlightHtml(RichTextBlock target, IReadOnlyList<HtmlSpan> spans, string? term, Color searchBg, bool darkText)
+    public static void HighlightHtml(RichTextBlock target, IReadOnlyList<HtmlSpan> spans, string? term,
+                                     Color searchBg, bool darkText, Color? surface = null)
     {
         try { target.TextHighlighters.Clear(); } catch { return; }
 
-        var bgRanges = new Dictionary<uint, List<(int, int)>>();
+        var bgRanges = new Dictionary<uint, List<(int, int, uint?)>>();
         var sb = new System.Text.StringBuilder();
         int offset = 0;
         foreach (var s in spans)
@@ -120,13 +157,13 @@ internal static class RichContentBuilder
             if (s.Background is { } bg && s.Text.Length > 0)
             {
                 if (!bgRanges.TryGetValue(bg, out var l)) bgRanges[bg] = l = new();
-                l.Add((offset, s.Text.Length));
+                l.Add((offset, s.Text.Length, s.Color));
             }
             sb.Append(s.Text);
             offset += s.Text.Length;
         }
         foreach (var kv in bgRanges)
-            AddBackground(target.TextHighlighters, ToColor(kv.Key), kv.Value);
+            AddBackground(target.TextHighlighters, ToColor(kv.Key), kv.Value, surface);
 
         if (!string.IsNullOrEmpty(term))
         {

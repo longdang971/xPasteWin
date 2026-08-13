@@ -121,6 +121,7 @@
                         <StackPanel VerticalAlignment="Center" Spacing="2"
                                     Margin="{Binding FooterContentInset}">
                             <TextBlock x:Name="FooterTextBlock" Text="{Binding FooterText}" FontSize="{Binding FooterFontSize}"
+                                       FontWeight="{Binding FooterFontWeight}"
                                        Foreground="{Binding FooterTextBrush}"
                                        HorizontalAlignment="{Binding FooterAlignment}"
                                        TextTrimming="CharacterEllipsis" />

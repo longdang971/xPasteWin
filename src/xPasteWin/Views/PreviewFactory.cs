@@ -244,7 +244,8 @@ internal static class PreviewFactory
             Margin = new Thickness(14),
             IsTextSelectionEnabled = true,
         };
-        RichContentBuilder.PopulateHtml(rtb, rich.Html, DefaultFg(fill));
+        RichContentBuilder.PopulateHtml(rtb, rich.Html, DefaultFg(fill),
+            fill ?? ((SolidColorBrush)ContentBg).Color);
         return new ScrollViewer { Background = bg, Content = rtb };
     }
 

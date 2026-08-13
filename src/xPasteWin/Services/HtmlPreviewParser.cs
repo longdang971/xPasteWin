@@ -154,7 +154,7 @@ public static class HtmlPreviewParser
         var style = Attr(attrs, "style");
         if (!string.IsNullOrEmpty(style))
         {
-            foreach (var decl in style.Split(';'))
+            foreach (var decl in SplitDeclarations(style))
             {
                 var kv = decl.Split(':', 2);
                 if (kv.Length != 2) continue;
@@ -178,6 +178,30 @@ public static class HtmlPreviewParser
         return s;
     }
 
+    /// <summary>
+    /// Tách <c>style=""</c> thành từng khai báo. KHÔNG dùng <c>Split(';')</c> thẳng: Chrome ghi
+    /// <c>font-family: &amp;quot;JetBrains Mono&amp;quot;, monospace</c> — dấu <c>;</c> cuối mỗi
+    /// <c>&amp;quot;</c> cắt vụn khai báo, làm giá trị cụt thành "&amp;quot" và mất luôn phần
+    /// "monospace" phía sau (chữ ra Segoe UI thay vì font mono).
+    /// Nên: giải mã thực thể trước, rồi tách theo <c>;</c> NGOÀI dấu nháy.
+    /// </summary>
+    private static List<string> SplitDeclarations(string style)
+    {
+        style = DecodeEntities(style);
+        var parts = new List<string>();
+        var sb = new StringBuilder();
+        char quote = '\0';
+        foreach (var ch in style)
+        {
+            if (quote != '\0') { if (ch == quote) quote = '\0'; sb.Append(ch); }
+            else if (ch is '"' or '\'') { quote = ch; sb.Append(ch); }
+            else if (ch == ';') { parts.Add(sb.ToString()); sb.Clear(); }
+            else sb.Append(ch);
+        }
+        if (sb.Length > 0) parts.Add(sb.ToString());
+        return parts;
+    }
+
     // Gộp các ngắt dòng liên tiếp + bỏ ngắt ở đầu/cuối.
     private static void CollapseBreaks(List<HtmlSpan> spans)
     {
@@ -193,8 +217,14 @@ public static class HtmlPreviewParser
         var style = Attr(attrs, "style");
         if (!string.IsNullOrEmpty(style))
         {
-            var m = Regex.Match(style, @"background(?:-color)?\s*:\s*([^;]+)", RegexOptions.IgnoreCase);
-            if (m.Success && ParseColor(m.Groups[1].Value.Trim()) is { } bc) return bc;
+            foreach (var decl in SplitDeclarations(style))
+            {
+                var kv = decl.Split(':', 2);
+                if (kv.Length != 2) continue;
+                var prop = kv[0].Trim().ToLowerInvariant();
+                if (prop is "background" or "background-color" && ParseColor(kv[1].Trim()) is { } bc)
+                    return bc;
+            }
         }
         return null;
     }
